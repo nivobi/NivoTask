@@ -39,7 +39,7 @@ public class TimeEntriesController : ControllerBase
                 EntryId = activeEntry.Id,
                 TaskId = activeEntry.TaskId,
                 TaskTitle = activeEntry.Task.Title,
-                ElapsedSeconds = (int)(DateTime.UtcNow - activeEntry.StartTime!.Value).TotalSeconds,
+                ElapsedSeconds = Math.Max(0, (int)(DateTime.UtcNow - activeEntry.StartTime!.Value).TotalSeconds),
                 StartTime = activeEntry.StartTime!.Value
             });
         }
@@ -117,7 +117,7 @@ public class TimeEntriesController : ControllerBase
             EntryId = entry.Id,
             TaskId = entry.TaskId,
             TaskTitle = entry.Task.Title,
-            ElapsedSeconds = (int)(DateTime.UtcNow - entry.StartTime!.Value).TotalSeconds,
+            ElapsedSeconds = Math.Max(0, (int)(DateTime.UtcNow - entry.StartTime!.Value).TotalSeconds),
             StartTime = entry.StartTime!.Value
         });
     }
