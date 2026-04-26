@@ -1,41 +1,99 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using NivoTask.Api.Data;
+using NivoTask.Api.Models;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+// EF Core + Pomelo MySQL
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+
+// Identity with cookie auth
+builder.Services
+    .AddAuthentication(IdentityConstants.ApplicationScheme)
+    .AddIdentityCookies();
+
+builder.Services.AddIdentityCore<AppUser>(options =>
+    {
+        // D-13: Relaxed password policy
+        options.Password.RequireDigit = false;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequiredLength = 8;
+
+        // D-14: Lockout policy
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
+        options.Lockout.AllowedForNewUsers = true;
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddApiEndpoints();
+
+// D-15: Authorize-by-default
+builder.Services.AddAuthorizationBuilder()
+    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build());
+
+// D-12: Persistent cookie expiration (30 days)
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.ExpireTimeSpan = TimeSpan.FromDays(30);
+    options.SlidingExpiration = true;
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = SameSiteMode.Lax;
+    options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+    // Return 401 instead of redirect for API calls (Pitfall 2 from RESEARCH.md)
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
+});
+
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Seed default user (D-05, D-06)
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await db.Database.MigrateAsync();
+    await SeedData.InitializeAsync(scope.ServiceProvider, builder.Configuration);
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-app.UseHttpsRedirection();
+// D-03: Serve Blazor WASM static files
+app.UseBlazorFrameworkFiles();
+app.UseStaticFiles();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.MapGet("/weatherforecast", () =>
+// Identity API endpoints (login, register, manage/info) -- AllowAnonymous per D-15
+app.MapIdentityApi<AppUser>().AllowAnonymous();
+
+// Custom logout endpoint (CSRF-safe: requires POST with body + auth)
+app.MapPost("/logout", async (SignInManager<AppUser> signInManager) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    await signInManager.SignOutAsync();
+    return TypedResults.Ok();
+}).RequireAuthorization();
+
+app.MapFallbackToFile("index.html");
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
