@@ -3,7 +3,7 @@ namespace NivoTask.Api.Models;
 public class TimeEntry
 {
     public int Id { get; set; }
-    public DateTime StartTime { get; set; }
+    public DateTime? StartTime { get; set; }
     public DateTime? EndTime { get; set; }
     public int DurationSeconds { get; set; }
     public string? Notes { get; set; }
