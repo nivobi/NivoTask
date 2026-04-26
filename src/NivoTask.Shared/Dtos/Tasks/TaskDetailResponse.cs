@@ -10,4 +10,5 @@ public class TaskDetailResponse
     public int ColumnId { get; set; }
     public int? ParentTaskId { get; set; }
     public List<TaskResponse> SubTasks { get; set; } = [];
+    public int TotalTimeSeconds { get; set; }
 }

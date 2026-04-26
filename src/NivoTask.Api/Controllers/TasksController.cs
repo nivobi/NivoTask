@@ -59,7 +59,14 @@ public class TasksController : ControllerBase
 
         if (task is null) return NotFound();
 
-        return Ok(ToTaskDetailResponse(task));
+        // Hierarchical rollup: sum completed entries for this task + all its sub-tasks (D-04, D-05)
+        var totalTimeSeconds = await _db.TimeEntries
+            .Where(te => (te.TaskId == taskId || te.Task.ParentTaskId == taskId)
+                      && te.EndTime != null
+                      && te.DurationSeconds > 0)
+            .SumAsync(te => te.DurationSeconds);
+
+        return Ok(ToTaskDetailResponse(task, totalTimeSeconds));
     }
 
     [HttpPut("tasks/{taskId}")]
@@ -219,7 +226,7 @@ public class TasksController : ControllerBase
         SubTaskCount = t.SubTasks?.Count ?? 0
     };
 
-    private static TaskDetailResponse ToTaskDetailResponse(TaskItem t) => new()
+    private static TaskDetailResponse ToTaskDetailResponse(TaskItem t, int totalTimeSeconds = 0) => new()
     {
         Id = t.Id,
         Title = t.Title,
@@ -231,6 +238,7 @@ public class TasksController : ControllerBase
         SubTasks = t.SubTasks?
             .OrderBy(s => s.SortOrder)
             .Select(s => ToTaskResponse(s))
-            .ToList() ?? []
+            .ToList() ?? [],
+        TotalTimeSeconds = totalTimeSeconds
     };
 }
