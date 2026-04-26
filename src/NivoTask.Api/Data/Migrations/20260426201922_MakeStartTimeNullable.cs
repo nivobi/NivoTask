@@ -21,6 +21,12 @@ namespace NivoTask.Api.Data.Migrations
         }
 
         /// <inheritdoc />
+        /// <remarks>
+        /// WARNING: Data-lossy rollback. Manual entries (StartTime IS NULL) will receive
+        /// DateTime.MinValue (0001-01-01) as their StartTime, making them indistinguishable
+        /// from timer entries and breaking the IsManual detection logic (StartTime == null).
+        /// If rolling back in production, first UPDATE or DELETE rows where StartTime IS NULL.
+        /// </remarks>
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AlterColumn<DateTime>(
