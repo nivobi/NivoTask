@@ -32,6 +32,8 @@ public class AppDbContext : IdentityDbContext<AppUser>
 
         builder.Entity<BoardColumn>(e =>
         {
+            e.Property(c => c.IsDone).HasDefaultValue(false);
+
             e.HasMany(c => c.Tasks)
              .WithOne(t => t.Column)
              .HasForeignKey(t => t.ColumnId)

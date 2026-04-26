@@ -65,6 +65,7 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 builder.Services.AddOpenApi();
+builder.Services.AddControllers();
 
 var app = builder.Build();
 
@@ -95,6 +96,8 @@ app.UseStaticFiles();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapControllers();
 
 // Identity API endpoints (login, register, manage/info) -- AllowAnonymous per D-15
 app.MapIdentityApi<AppUser>().AllowAnonymous();
