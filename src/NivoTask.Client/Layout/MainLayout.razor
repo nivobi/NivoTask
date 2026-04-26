@@ -1,16 +1,32 @@
-﻿@inherits LayoutComponentBase
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@inherits LayoutComponentBase
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+<MudLayout>
+    <MudAppBar Elevation="1">
+        <MudText Typo="Typo.h5" Class="ml-3">NivoTask</MudText>
+        <MudSpacer />
+        <AuthorizeView>
+            <Authorized>
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="HandleLogout">Logout</MudButton>
+            </Authorized>
+        </AuthorizeView>
+    </MudAppBar>
+    <MudMainContent Class="pa-4">
+        @Body
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    [Inject] private IAccountManagement AccountManagement { get; set; } = null!;
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    private async Task HandleLogout()
+    {
+        await AccountManagement.LogoutAsync();
+        Navigation.NavigateTo("/login", forceLoad: true);
+    }
+}

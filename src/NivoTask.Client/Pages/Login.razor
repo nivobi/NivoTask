@@ -1,0 +1,80 @@
+@page "/login"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject IAccountManagement AccountManagement
+@inject NavigationManager Navigation
+
+<div class="d-flex align-center justify-center" style="height: 100vh;">
+    <MudCard Style="width: 400px;">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h4" Align="Align.Center">NivoTask</MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4">@_errorMessage</MudAlert>
+            }
+            <MudTextField @bind-Value="_email" Label="Email" Variant="Variant.Outlined"
+                          InputType="InputType.Email" Class="mb-4" />
+            <MudTextField @bind-Value="_password" Label="Password" Variant="Variant.Outlined"
+                          InputType="@_passwordInput" Class="mb-4"
+                          Adornment="Adornment.End" AdornmentIcon="@_passwordIcon"
+                          OnAdornmentClick="TogglePasswordVisibility" />
+            <MudCheckBox @bind-Value="_rememberMe" Label="Remember me" Color="Color.Primary" />
+        </MudCardContent>
+        <MudCardActions>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                       OnClick="HandleLogin" Disabled="@_loading">
+                @if (_loading)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Log In
+            </MudButton>
+        </MudCardActions>
+    </MudCard>
+</div>
+
+@code {
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private bool _rememberMe;
+    private bool _loading;
+    private string? _errorMessage;
+    private InputType _passwordInput = InputType.Password;
+    private string _passwordIcon = Icons.Material.Filled.VisibilityOff;
+
+    private void TogglePasswordVisibility()
+    {
+        if (_passwordInput == InputType.Password)
+        {
+            _passwordInput = InputType.Text;
+            _passwordIcon = Icons.Material.Filled.Visibility;
+        }
+        else
+        {
+            _passwordInput = InputType.Password;
+            _passwordIcon = Icons.Material.Filled.VisibilityOff;
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        _errorMessage = null;
+        _loading = true;
+
+        var result = await AccountManagement.LoginAsync(_email, _password);
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo("/boards"); // D-09: redirect to board list
+        }
+        else
+        {
+            _errorMessage = "Invalid username or password."; // D-10: generic error
+        }
+
+        _loading = false;
+    }
+}
