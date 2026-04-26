@@ -1,0 +1,7 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NivoTask.Api/NivoTask.Api.csproj" />
+    <Project Path="src/NivoTask.Client/NivoTask.Client.csproj" />
+    <Project Path="src/NivoTask.Shared/NivoTask.Shared.csproj" />
+  </Folder>
+</Solution>
