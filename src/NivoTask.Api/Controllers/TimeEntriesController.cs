@@ -96,6 +96,10 @@ public class TimeEntriesController : ControllerBase
         return Ok(ToTimeEntryResponse(entry));
     }
 
+    // TODO: Implement stale-timer detection. If a timer runs for > 24h (orphaned due to
+    // browser close / app crash), it will never contribute to rollup because DurationSeconds
+    // stays 0 until StopTimer is called. Consider a background job or UI warning when
+    // ElapsedSeconds > 86400. See WR-03 in phase 03 code review.
     [HttpGet("timer/active")]
     public async Task<IActionResult> GetActiveTimer()
     {
