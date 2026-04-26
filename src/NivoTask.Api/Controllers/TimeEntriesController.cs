@@ -86,9 +86,11 @@ public class TimeEntriesController : ControllerBase
         if (entry is null) return NotFound();
 
         // Server-computed duration (D-03), capped at 86400 seconds (Pitfall 4)
-        var duration = (int)(DateTime.UtcNow - entry.StartTime!.Value).TotalSeconds;
+        // Capture UtcNow once so EndTime and DurationSeconds are consistent
+        var now = DateTime.UtcNow;
+        var duration = (int)(now - entry.StartTime!.Value).TotalSeconds;
         entry.DurationSeconds = Math.Min(duration, 86400);
-        entry.EndTime = DateTime.UtcNow;
+        entry.EndTime = now;
 
         await _db.SaveChangesAsync();
         return Ok(ToTimeEntryResponse(entry));
