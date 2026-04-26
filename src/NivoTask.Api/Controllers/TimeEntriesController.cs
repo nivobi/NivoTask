@@ -131,7 +131,7 @@ public class TimeEntriesController : ControllerBase
         if (task is null) return NotFound();
 
         var entries = await _db.TimeEntries
-            .Where(te => te.TaskId == taskId)
+            .Where(te => te.TaskId == taskId && te.UserId == userId)
             .OrderByDescending(te => te.StartTime ?? DateTime.MinValue)
             .ThenByDescending(te => te.Id)
             .ToListAsync();
