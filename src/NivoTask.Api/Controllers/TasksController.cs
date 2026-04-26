@@ -60,9 +60,11 @@ public class TasksController : ControllerBase
         if (task is null) return NotFound();
 
         // Hierarchical rollup: sum completed entries for this task + all its sub-tasks (D-04, D-05)
+        // Include: stopped timers (EndTime != null) AND manual entries (StartTime == null)
+        // Exclude: running timers (StartTime != null && EndTime == null)
         var totalTimeSeconds = await _db.TimeEntries
             .Where(te => (te.TaskId == taskId || te.Task.ParentTaskId == taskId)
-                      && te.EndTime != null
+                      && (te.EndTime != null || te.StartTime == null)
                       && te.DurationSeconds > 0)
             .SumAsync(te => te.DurationSeconds);
 

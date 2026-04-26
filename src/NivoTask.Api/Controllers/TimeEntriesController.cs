@@ -120,10 +120,11 @@ public class TimeEntriesController : ControllerBase
             .Where(te => te.TaskId == taskId)
             .OrderByDescending(te => te.StartTime ?? DateTime.MinValue)
             .ThenByDescending(te => te.Id)
-            .Select(te => ToTimeEntryResponse(te))
             .ToListAsync();
 
-        return Ok(entries);
+        var response = entries.Select(te => ToTimeEntryResponse(te)).ToList();
+
+        return Ok(response);
     }
 
     [HttpPost("tasks/{taskId}/time-entries")]

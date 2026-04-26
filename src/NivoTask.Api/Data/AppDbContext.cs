@@ -62,11 +62,14 @@ public class AppDbContext : IdentityDbContext<AppUser>
              .OnDelete(DeleteBehavior.Cascade);
 
             // One active timer at a time -- partial unique index
-            // MySQL supports filtered indexes via Pomelo's HasFilter translation
-            e.HasIndex(te => te.UserId)
-             .HasFilter("`EndTime` IS NULL")
-             .IsUnique()
-             .HasDatabaseName("IX_TimeEntries_ActiveTimer");
+            // Only apply filtered unique index for MySQL; SQLite ignores/misapplies HasFilter
+            if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
+            {
+                e.HasIndex(te => te.UserId)
+                 .HasFilter("`EndTime` IS NULL")
+                 .IsUnique()
+                 .HasDatabaseName("IX_TimeEntries_ActiveTimer");
+            }
         });
     }
 }
