@@ -19,6 +19,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<ActionResult<TimeEntryResponse>> StartTimer(int taskId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var task = await _db.Tasks
             .Include(t => t.Column).ThenInclude(c => c.Board)
@@ -46,7 +47,7 @@ public class TimeEntriesController : ControllerBase
         var entry = new TimeEntry
         {
             TaskId = taskId,
-            UserId = userId!,
+            UserId = userId,
             StartTime = DateTime.UtcNow,
             EndTime = null,
             DurationSeconds = 0
@@ -70,6 +71,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<ActionResult<TimeEntryResponse>> StopTimer(int taskId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var task = await _db.Tasks
             .Include(t => t.Column).ThenInclude(c => c.Board)
@@ -96,6 +98,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<IActionResult> GetActiveTimer()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var entry = await _db.TimeEntries
             .Include(te => te.Task)
@@ -117,6 +120,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<ActionResult<List<TimeEntryResponse>>> GetTimeEntries(int taskId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var task = await _db.Tasks
             .Include(t => t.Column).ThenInclude(c => c.Board)
@@ -139,6 +143,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<ActionResult<TimeEntryResponse>> CreateTimeEntry(int taskId, CreateTimeEntryRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var task = await _db.Tasks
             .Include(t => t.Column).ThenInclude(c => c.Board)
@@ -149,7 +154,7 @@ public class TimeEntriesController : ControllerBase
         var entry = new TimeEntry
         {
             TaskId = taskId,
-            UserId = userId!,
+            UserId = userId,
             StartTime = null,
             EndTime = null,
             DurationSeconds = request.DurationMinutes * 60,
@@ -166,6 +171,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<IActionResult> UpdateTimeEntry(int entryId, UpdateTimeEntryRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var entry = await _db.TimeEntries
             .Include(te => te.Task).ThenInclude(t => t.Column).ThenInclude(c => c.Board)
@@ -188,6 +194,7 @@ public class TimeEntriesController : ControllerBase
     public async Task<IActionResult> DeleteTimeEntry(int entryId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
         var entry = await _db.TimeEntries
             .Include(te => te.Task).ThenInclude(t => t.Column).ThenInclude(c => c.Board)
