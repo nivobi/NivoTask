@@ -52,8 +52,16 @@ public class TimeEntriesController : ControllerBase
             DurationSeconds = 0
         };
 
-        _db.TimeEntries.Add(entry);
-        await _db.SaveChangesAsync();
+        try
+        {
+            _db.TimeEntries.Add(entry);
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            // Unique filtered index violation -- another timer was started concurrently
+            return Conflict(new { message = "Another timer was started concurrently." });
+        }
 
         return CreatedAtAction(nameof(GetTimeEntries), new { taskId }, ToTimeEntryResponse(entry));
     }
