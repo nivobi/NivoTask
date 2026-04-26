@@ -29,6 +29,10 @@ builder.Services.AddIdentityCore<AppUser>(options =>
         options.Lockout.MaxFailedAccessAttempts = 5;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(15);
         options.Lockout.AllowedForNewUsers = true;
+
+        // Single-user app -- no email confirmation flow needed
+        options.SignIn.RequireConfirmedEmail = false;
+        options.SignIn.RequireConfirmedAccount = false;
     })
     .AddEntityFrameworkStores<AppDbContext>()
     .AddApiEndpoints();
@@ -68,7 +72,15 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    await db.Database.MigrateAsync();
+    if (db.Database.ProviderName == "Pomelo.EntityFrameworkCore.MySql")
+    {
+        await db.Database.MigrateAsync();
+    }
+    else
+    {
+        // Non-MySQL provider (SQLite/InMemory for integration tests) -- create schema without migrations
+        await db.Database.EnsureCreatedAsync();
+    }
     await SeedData.InitializeAsync(scope.ServiceProvider, builder.Configuration);
 }
 
@@ -94,6 +106,17 @@ app.MapPost("/logout", async (SignInManager<AppUser> signInManager) =>
     return TypedResults.Ok();
 }).RequireAuthorization();
 
+// Simple user info endpoint protected by default fallback policy
+app.MapGet("/api/me", (HttpContext context) =>
+{
+    var email = context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+        ?? context.User.Identity?.Name;
+    return TypedResults.Ok(new { email });
+});
+
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// Make Program class accessible to integration tests
+public partial class Program { }
