@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NivoTask.Api.Data;
 using NivoTask.Api.Models;
+using Microsoft.AspNetCore.Authorization;
 using NivoTask.Shared.Dtos.Columns;
 
 namespace NivoTask.Api.Controllers;
 
 [ApiController]
 [Route("api/boards/{boardId}/columns")]
+[Authorize]
 public class ColumnsController : ControllerBase
 {
     private readonly AppDbContext _db;

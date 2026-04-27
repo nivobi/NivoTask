@@ -3,12 +3,14 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NivoTask.Api.Data;
 using NivoTask.Api.Models;
+using Microsoft.AspNetCore.Authorization;
 using NivoTask.Shared.Dtos.TimeEntries;
 
 namespace NivoTask.Api.Controllers;
 
 [ApiController]
 [Route("api")]
+[Authorize]
 public class TimeEntriesController : ControllerBase
 {
     private readonly AppDbContext _db;

@@ -37,11 +37,10 @@ builder.Services.AddIdentityCore<AppUser>(options =>
     .AddEntityFrameworkStores<AppDbContext>()
     .AddApiEndpoints();
 
-// D-15: Authorize-by-default
-builder.Services.AddAuthorizationBuilder()
-    .SetFallbackPolicy(new AuthorizationPolicyBuilder()
-        .RequireAuthenticatedUser()
-        .Build());
+// D-15: Authorize-by-default — use AddPolicy + controller-level [Authorize] instead of
+// SetFallbackPolicy, because fallback policy blocks static web asset requests (_content/, _framework/)
+// from NuGet packages in .NET 10 hosted Blazor WASM.
+builder.Services.AddAuthorization();
 
 // D-12: Persistent cookie expiration (30 days)
 builder.Services.ConfigureApplicationCookie(options =>
@@ -90,7 +89,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// D-03: Serve Blazor WASM static files
+// D-03: Serve Blazor WASM static files (before auth so they're not blocked)
 app.UseBlazorFrameworkFiles();
 app.UseStaticFiles();
 
@@ -109,15 +108,15 @@ app.MapPost("/logout", async (SignInManager<AppUser> signInManager) =>
     return TypedResults.Ok();
 }).RequireAuthorization();
 
-// Simple user info endpoint protected by default fallback policy
+// User info endpoint — explicitly protected (no fallback policy)
 app.MapGet("/api/me", (HttpContext context) =>
 {
     var email = context.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
         ?? context.User.Identity?.Name;
     return TypedResults.Ok(new { email });
-});
+}).RequireAuthorization();
 
-app.MapFallbackToFile("index.html");
+app.MapFallbackToFile("index.html").AllowAnonymous();
 
 app.Run();
 

@@ -5,12 +5,14 @@ using NivoTask.Api.Data;
 using NivoTask.Api.Models;
 using NivoTask.Shared.Dtos.Boards;
 using NivoTask.Shared.Dtos.Columns;
+using Microsoft.AspNetCore.Authorization;
 using NivoTask.Shared.Dtos.Tasks;
 
 namespace NivoTask.Api.Controllers;
 
 [ApiController]
 [Route("api/boards")]
+[Authorize]
 public class BoardsController : ControllerBase
 {
     private readonly AppDbContext _db;

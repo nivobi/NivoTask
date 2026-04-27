@@ -19,9 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\NivoTask.Shared\NivoTask.Shared.csproj" />
-    <ProjectReference Include="..\NivoTask.Client\NivoTask.Client.csproj">
-      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
-    </ProjectReference>
+    <ProjectReference Include="..\NivoTask.Client\NivoTask.Client.csproj" />
   </ItemGroup>
 
 </Project>
