@@ -66,7 +66,7 @@ public class AppDbContext : IdentityDbContext<AppUser>
             if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
             {
                 e.HasIndex(te => te.UserId)
-                 .HasFilter("`EndTime` IS NULL")
+                 .HasFilter("`StartTime` IS NOT NULL AND `EndTime` IS NULL")
                  .IsUnique()
                  .HasDatabaseName("IX_TimeEntries_ActiveTimer");
             }

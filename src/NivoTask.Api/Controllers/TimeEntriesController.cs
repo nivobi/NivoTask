@@ -63,7 +63,29 @@ public class TimeEntriesController : ControllerBase
         }
         catch (DbUpdateException)
         {
-            // Unique filtered index violation -- another timer was started concurrently
+            // Self-healing: clean ghost entries (manual entries with EndTime=NULL from old bug)
+            _db.ChangeTracker.Clear();
+            var ghosts = await _db.TimeEntries
+                .Where(te => te.UserId == userId && te.EndTime == null && te.StartTime == null)
+                .ToListAsync();
+            if (ghosts.Count > 0)
+            {
+                foreach (var g in ghosts) g.EndTime = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+                // Retry the insert after cleaning ghosts
+                _db.TimeEntries.Add(new TimeEntry
+                {
+                    TaskId = taskId, UserId = userId,
+                    StartTime = DateTime.UtcNow, EndTime = null, DurationSeconds = 0
+                });
+                try
+                {
+                    await _db.SaveChangesAsync();
+                    return CreatedAtAction(nameof(GetTimeEntries), new { taskId }, ToTimeEntryResponse(entry));
+                }
+                catch { }
+            }
+            // Genuine conflict — another timer was started concurrently
             return Conflict(new { message = "Another timer was started concurrently." });
         }
 
