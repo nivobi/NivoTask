@@ -11,6 +11,6 @@ public class UpdateBoardRequest
     [StringLength(50)]
     public string? Color { get; set; }
 
-    [StringLength(50)]
+    [StringLength(2000)]
     public string? Icon { get; set; }
 }
