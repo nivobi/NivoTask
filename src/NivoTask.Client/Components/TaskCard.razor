@@ -1,6 +1,6 @@
 @using NivoTask.Client.Models
 
-<MudCard Elevation="1" Class="task-card pa-2 mb-2">
+<MudCard Elevation="1" Class="task-card pa-2 mb-2" @onclick="HandleClick">
     <MudCardContent Class="pa-0">
         <MudText Typo="Typo.body1" Class="mud-text-truncate">@Item.Title</MudText>
         @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
@@ -29,4 +29,10 @@
 
 @code {
     [Parameter] public BoardTaskItem Item { get; set; } = null!;
+    [Parameter] public EventCallback<int> OnTaskClicked { get; set; }
+
+    private async Task HandleClick()
+    {
+        await OnTaskClicked.InvokeAsync(Item.Id);
+    }
 }
