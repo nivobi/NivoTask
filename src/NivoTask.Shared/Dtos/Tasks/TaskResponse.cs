@@ -10,4 +10,5 @@ public class TaskResponse
     public int ColumnId { get; set; }
     public int? ParentTaskId { get; set; }
     public int SubTaskCount { get; set; }
+    public bool IsDone { get; set; }
 }

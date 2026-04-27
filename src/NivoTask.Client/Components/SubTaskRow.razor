@@ -6,8 +6,17 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
-<div class="subtask-row @(IsActiveTimer ? "active-timer" : "")" @onmouseenter="() => _hovered = true" @onmouseleave="() => _hovered = false">
+<div class="subtask-row @(IsActiveTimer ? "active-timer" : "") @(_isDone ? "is-done" : "")" @onmouseenter="() => _hovered = true" @onmouseleave="() => _hovered = false">
     <div class="d-flex align-center" style="min-height: 40px; padding: 4px 8px; gap: 6px;">
+        <div class="done-check @(_isDone ? "checked" : "")" @onclick="ToggleDone"
+             style="width: 18px; height: 18px; border-radius: 4px; border: 2px solid @(_isDone ? "#36b37e" : "#c1c7d0"); flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease; background: @(_isDone ? "#36b37e" : "transparent");">
+            @if (_isDone)
+            {
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            }
+        </div>
         <MudIconButton Icon="@TimerIcon" Size="Size.Small"
                        Color="@(IsActiveTimer ? Color.Secondary : Color.Default)"
                        OnClick="HandleTimerToggle"
@@ -23,7 +32,7 @@
         {
             <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate"
                      @onclick="StartEditing"
-                     Style="cursor: text; font-size: 0.875rem; line-height: 1.5;">
+                     Style="@($"cursor: text; font-size: 0.875rem; line-height: 1.5;{(_isDone ? " text-decoration: line-through; opacity: 0.4;" : "")}")">
                 @SubTask.Title
             </MudText>
         }
@@ -147,6 +156,7 @@
         }
     }
 
+    private bool _isDone;
     private bool _expanded;
     private bool _hovered;
     private int _hoveredEntryId;
@@ -161,13 +171,33 @@
     private int _totalSeconds;
 
     protected override void OnInitialized()
-        => TimerState.OnTimerChanged += HandleTimerChanged;
+    {
+        _isDone = SubTask.IsDone;
+        TimerState.OnTimerChanged += HandleTimerChanged;
+    }
 
     private async void HandleTimerChanged()
         => await InvokeAsync(StateHasChanged);
 
     public void Dispose()
         => TimerState.OnTimerChanged -= HandleTimerChanged;
+
+    private async Task ToggleDone()
+    {
+        _isDone = !_isDone;
+        SubTask.IsDone = _isDone;
+        StateHasChanged();
+        try
+        {
+            await TaskService.ToggleDoneAsync(SubTask.Id);
+        }
+        catch
+        {
+            _isDone = !_isDone;
+            SubTask.IsDone = _isDone;
+            Snackbar.Add("Could not update status.", Severity.Error);
+        }
+    }
 
     private async Task HandleTimerToggle()
     {

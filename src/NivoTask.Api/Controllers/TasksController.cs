@@ -244,7 +244,8 @@ public class TasksController : ControllerBase
         CreatedAt = t.CreatedAt,
         ColumnId = t.ColumnId,
         ParentTaskId = t.ParentTaskId,
-        SubTaskCount = t.SubTasks?.Count ?? 0
+        SubTaskCount = t.SubTasks?.Count ?? 0,
+        IsDone = t.IsDone
     };
 
     private static TaskDetailResponse ToTaskDetailResponse(TaskItem t, int totalTimeSeconds = 0) => new()

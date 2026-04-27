@@ -10,9 +10,9 @@
         <div class="task-card-checklist">
             @foreach (var sub in Item.SubTasks.Take(5))
             {
-                <div class="checklist-item @(sub.IsDone ? "done" : "")"
-                     @onclick="() => ToggleDone(sub)" @onclick:stopPropagation="true">
-                    <div class="check-box @(sub.IsDone ? "checked" : "")">
+                <div class="checklist-item @(sub.IsDone ? "done" : "")">
+                    <div class="check-box @(sub.IsDone ? "checked" : "")"
+                         @onclick="() => ToggleDone(sub)" @onclick:stopPropagation="true">
                         @if (sub.IsDone)
                         {
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -20,7 +20,8 @@
                             </svg>
                         }
                     </div>
-                    <span class="checklist-title">@sub.Title</span>
+                    <span class="checklist-title"
+                          @onclick="() => ToggleDone(sub)" @onclick:stopPropagation="true">@sub.Title</span>
                 </div>
             }
             @if (Item.SubTasks.Count > 5)
