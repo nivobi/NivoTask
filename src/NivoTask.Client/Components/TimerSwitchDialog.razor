@@ -1,17 +1,17 @@
-<MudDialog>
-    <TitleContent>
-        <MudText Typo="Typo.h6">Switch Timer?</MudText>
-    </TitleContent>
-    <DialogContent>
-        <MudText Typo="Typo.body1">
-            A timer is running on <b>@ActiveTaskTitle</b> (@FormattedElapsed). Switch to <b>@NewTaskTitle</b>?
-        </MudText>
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="Cancel">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm">Switch Timer</MudButton>
-    </DialogActions>
-</MudDialog>
+<div style="padding: 24px;">
+    <MudText Typo="Typo.h6" Class="mb-3">Switch timer?</MudText>
+    <MudText Typo="Typo.body2" Style="opacity: 0.6; line-height: 1.6;">
+        Currently tracking <span style="font-weight: 600; opacity: 1;">@ActiveTaskTitle</span>
+        <span style="font-variant-numeric: tabular-nums;">(@FormattedElapsed)</span>.
+        Switch to <span style="font-weight: 600; opacity: 1;">@NewTaskTitle</span>?
+    </MudText>
+    <div class="d-flex justify-end gap-2 mt-4">
+        <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="Cancel"
+                   Style="text-transform: none;">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Secondary" OnClick="Confirm"
+                   Style="text-transform: none; box-shadow: none;">Switch</MudButton>
+    </div>
+</div>
 
 @code {
     [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
@@ -20,7 +20,16 @@
     [Parameter] public int ActiveElapsedSeconds { get; set; }
     [Parameter] public string NewTaskTitle { get; set; } = string.Empty;
 
-    private string FormattedElapsed => $"{ActiveElapsedSeconds / 3600}h {(ActiveElapsedSeconds % 3600) / 60}m";
+    private string FormattedElapsed
+    {
+        get
+        {
+            var h = ActiveElapsedSeconds / 3600;
+            var m = (ActiveElapsedSeconds % 3600) / 60;
+            if (h > 0) return $"{h}h {m:D2}m";
+            return $"{m}m";
+        }
+    }
 
     private void Cancel() => MudDialog.Cancel();
     private void Confirm() => MudDialog.Close(DialogResult.Ok(true));

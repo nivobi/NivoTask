@@ -11,3 +11,34 @@
 ::deep .mud-drawer--closed.mud-drawer-anchor-end {
     display: none;
 }
+
+/* Softer drawer overlay */
+::deep .mud-overlay {
+    background-color: rgba(0, 0, 0, 0.15) !important;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+}
+
+/* Smoother scrollbars */
+::deep ::-webkit-scrollbar {
+    width: 6px;
+}
+
+::deep ::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::deep ::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
+}
+
+::deep ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+/* AppBar text field cleanup */
+::deep .mud-input-underline::before,
+::deep .mud-input-underline::after {
+    border-bottom-color: rgba(0, 0, 0, 0.06) !important;
+}

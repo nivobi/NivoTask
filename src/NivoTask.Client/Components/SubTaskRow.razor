@@ -6,95 +6,119 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
-<div class="subtask-row @(IsActiveTimer ? "active-timer" : "")" style="border-radius: 8px;">
-    <div class="d-flex align-center gap-2 pa-2" style="min-height: 48px;">
+<div class="subtask-row @(IsActiveTimer ? "active-timer" : "")" @onmouseenter="() => _hovered = true" @onmouseleave="() => _hovered = false">
+    <div class="d-flex align-center" style="min-height: 40px; padding: 4px 8px; gap: 6px;">
         <MudIconButton Icon="@TimerIcon" Size="Size.Small"
-                       Color="@(IsActiveTimer ? Color.Primary : Color.Default)"
-                       OnClick="HandleTimerToggle" />
+                       Color="@(IsActiveTimer ? Color.Secondary : Color.Default)"
+                       OnClick="HandleTimerToggle"
+                       Style="@(IsActiveTimer ? "" : "opacity: 0.45;")" />
         @if (_editing)
         {
             <MudTextField T="string" @bind-Value="_editTitle" Variant="Variant.Text"
                           Class="flex-grow-1" Immediate="true"
                           OnKeyDown="HandleEditKeyDown" OnBlur="SaveEdit"
-                          AutoFocus="true" />
+                          AutoFocus="true" Style="font-size: 0.875rem;" />
         }
         else
         {
-            <MudText Typo="Typo.body1" Class="flex-grow-1 mud-text-truncate"
-                     @onclick="StartEditing" Style="cursor: text;">
+            <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate"
+                     @onclick="StartEditing"
+                     Style="cursor: text; font-size: 0.875rem; line-height: 1.5;">
                 @SubTask.Title
             </MudText>
         }
-        <MudText Typo="Typo.body2" Style="opacity: 0.6; white-space: nowrap;">@FormattedTime</MudText>
-        <div class="delete-subtask">
-            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
-                           Color="Color.Error" OnClick="HandleDelete" />
-        </div>
+        @if (_totalSeconds > 0 || IsActiveTimer)
+        {
+            <MudText Typo="Typo.body2" Style="opacity: 0.35; white-space: nowrap; font-size: 0.75rem; font-variant-numeric: tabular-nums;">
+                @FormattedTime
+            </MudText>
+        }
+        @if (_hovered)
+        {
+            <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Size="Size.Small"
+                           Color="Color.Default" OnClick="HandleDelete"
+                           Style="opacity: 0.3; font-size: 16px;" />
+        }
         <MudIconButton Icon="@(_expanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
                        Size="Size.Small" Color="Color.Default"
-                       OnClick="ToggleExpand" />
+                       OnClick="ToggleExpand"
+                       Style="opacity: 0.25;" />
     </div>
 
     @if (_expanded)
     {
-        <div class="pa-2" style="padding-left: 48px;">
+        <div style="padding: 4px 8px 12px 44px;">
             @if (_loadingEntries)
             {
-                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="24px" />
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="20px"
+                             Style="border-radius: 4px;" />
             }
             else if (_entries is not null)
             {
-                @if (_entries.Count == 0)
+                @if (_entries.Count == 0 && !_showAddForm)
                 {
-                    <MudText Typo="Typo.body2" Style="opacity: 0.6;">
-                        No time entries yet. Start a timer or add a manual entry.
+                    <MudText Typo="Typo.body2" Style="opacity: 0.3; font-size: 0.75rem;">
+                        No entries yet
                     </MudText>
                 }
                 else
                 {
-                    @foreach (var entry in _entries)
-                    {
-                        <div class="d-flex align-center gap-2 py-1 entry-row">
-                            <MudText Typo="Typo.body2" Style="opacity: 0.6; min-width: 60px;">
-                                @FormatEntryDate(entry)
-                            </MudText>
-                            <MudText Typo="Typo.body2" Style="min-width: 60px;">
-                                @FormatDuration(entry.DurationSeconds)
-                            </MudText>
-                            <MudIcon Icon="@(entry.IsManual ? Icons.Material.Filled.Edit : Icons.Material.Filled.Timer)"
-                                     Size="Size.Small" Style="opacity: 0.4; font-size: 16px;" />
-                            @if (!string.IsNullOrEmpty(entry.Notes))
-                            {
-                                <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate" Style="opacity: 0.6;">
-                                    @entry.Notes
+                    <div style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 6px;">
+                        @foreach (var entry in _entries)
+                        {
+                            <div class="entry-row d-flex align-center" style="gap: 8px; padding: 3px 0; border-radius: 4px;" @onmouseenter="() => _hoveredEntryId = entry.Id" @onmouseleave="() => _hoveredEntryId = 0">
+                                <MudIcon Icon="@(entry.IsManual ? Icons.Material.Outlined.EditNote : Icons.Material.Outlined.Timer)"
+                                         Size="Size.Small" Style="opacity: 0.2; font-size: 14px; flex-shrink: 0;" />
+                                <MudText Typo="Typo.body2" Style="font-size: 0.75rem; font-variant-numeric: tabular-nums; min-width: 44px;">
+                                    @FormatDuration(entry.DurationSeconds)
                                 </MudText>
-                            }
-                            <div class="entry-actions">
-                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
-                                               Color="Color.Error" OnClick="() => DeleteEntry(entry)" />
+                                <MudText Typo="Typo.body2" Style="opacity: 0.3; font-size: 0.6875rem; min-width: 44px;">
+                                    @FormatEntryDate(entry)
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(entry.Notes))
+                                {
+                                    <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate"
+                                             Style="opacity: 0.4; font-size: 0.75rem;">
+                                        @entry.Notes
+                                    </MudText>
+                                }
+                                else
+                                {
+                                    <div class="flex-grow-1"></div>
+                                }
+                                @if (_hoveredEntryId == entry.Id)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small"
+                                                   OnClick="() => DeleteEntry(entry)"
+                                                   Style="opacity: 0.3; font-size: 14px;" />
+                                }
                             </div>
-                        </div>
-                    }
+                        }
+                    </div>
                 }
 
                 @if (_showAddForm)
                 {
-                    <div class="d-flex align-center gap-2 mt-2">
-                        <MudTextField T="int" @bind-Value="_manualDuration" Label="Minutes"
-                                      Variant="Variant.Outlined" Style="max-width: 100px;"
-                                      Adornment="Adornment.End" AdornmentText="min" />
-                        <MudTextField T="string" @bind-Value="_manualNotes" Label="Notes (optional)"
-                                      Variant="Variant.Outlined" Class="flex-grow-1" />
-                        <MudButton Variant="Variant.Text" OnClick="() => _showAddForm = false">Cancel</MudButton>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary"
-                                   OnClick="AddManualEntry" Disabled="_saving">Add</MudButton>
+                    <div class="d-flex align-center gap-2 mt-1" style="padding: 4px 0;">
+                        <MudNumericField T="int" @bind-Value="_manualDuration" Label="Min"
+                                      Variant="Variant.Outlined" Style="max-width: 72px; font-size: 0.8125rem;"
+                                      Min="1" Max="1440" />
+                        <MudTextField T="string" @bind-Value="_manualNotes" Placeholder="Notes..."
+                                      Variant="Variant.Outlined" Class="flex-grow-1"
+                                      Style="font-size: 0.8125rem;" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small"
+                                       Color="Color.Secondary" OnClick="AddManualEntry"
+                                       Disabled="_saving" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                       OnClick="() => _showAddForm = false"
+                                       Style="opacity: 0.4;" />
                     </div>
                 }
                 else
                 {
-                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
                                StartIcon="@Icons.Material.Filled.Add" OnClick="() => _showAddForm = true"
-                               Class="mt-1">
+                               Style="text-transform: none; font-size: 0.75rem; opacity: 0.4; padding: 2px 8px; margin-top: 2px;">
                         Add entry
                     </MudButton>
                 }
@@ -111,9 +135,21 @@
     private bool IsActiveTimer => TimerState.ActiveTaskId == SubTask.Id;
     private string TimerIcon => IsActiveTimer ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow;
 
-    private string FormattedTime => $"{_totalSeconds / 3600}h {(_totalSeconds % 3600) / 60}m";
+    private string FormattedTime
+    {
+        get
+        {
+            var secs = IsActiveTimer ? TimerState.ElapsedSeconds + _totalSeconds : _totalSeconds;
+            var h = secs / 3600;
+            var m = (secs % 3600) / 60;
+            if (h > 0) return $"{h}h {m:D2}m";
+            return $"{m}m";
+        }
+    }
 
     private bool _expanded;
+    private bool _hovered;
+    private int _hoveredEntryId;
     private List<TimeEntryResponse>? _entries;
     private bool _loadingEntries;
     private bool _editing;
@@ -137,17 +173,15 @@
     {
         if (IsActiveTimer)
         {
-            // Pause: stop active timer (IC-06)
-            TimerState.Clear(); // optimistic
+            TimerState.Clear();
             try
             {
                 await TimeEntryService.StopTimerAsync(SubTask.Id);
-                await LoadEntries(); // refresh entries list
-                await OnTimerAction.InvokeAsync(); // parent re-fetches rollup
+                await LoadEntries();
+                await OnTimerAction.InvokeAsync();
             }
             catch
             {
-                // Revert: re-fetch active timer
                 try
                 {
                     var active = await TimeEntryService.GetActiveTimerAsync();
@@ -155,16 +189,14 @@
                         TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
                 }
                 catch { }
-                Snackbar.Add("Could not stop timer. Try again.", Severity.Error);
+                Snackbar.Add("Could not stop timer.", Severity.Error);
             }
         }
         else
         {
-            // Start: attempt to start timer (IC-04)
             var response = await TimeEntryService.StartTimerAsync(SubTask.Id);
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                // 409: show switch dialog (IC-05, D-07)
                 var activeTimer = await response.Content.ReadFromJsonAsync<ActiveTimerResponse>();
                 if (activeTimer is null) return;
 
@@ -175,11 +207,15 @@
                     { x => x.NewTaskTitle, SubTask.Title }
                 };
                 var dialog = await DialogService.ShowAsync<TimerSwitchDialog>(
-                    "Switch Timer?", parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall });
+                    "Switch Timer?", parameters, new DialogOptions
+                    {
+                        MaxWidth = MaxWidth.ExtraSmall,
+                        NoHeader = true,
+                        BackdropClick = true,
+                    });
                 var result = await dialog.Result;
                 if (result is not null && !result.Canceled)
                 {
-                    // Switch: stop old, start new
                     try
                     {
                         await TimeEntryService.StopTimerAsync(activeTimer.TaskId);
@@ -192,20 +228,19 @@
                     }
                     catch
                     {
-                        Snackbar.Add("Could not switch timer. Try again.", Severity.Error);
+                        Snackbar.Add("Could not switch timer.", Severity.Error);
                     }
                 }
             }
             else if (response.IsSuccessStatusCode)
             {
-                // Started successfully: update timer state
                 var active = await TimeEntryService.GetActiveTimerAsync();
                 if (active is not null)
                     TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
             }
             else
             {
-                Snackbar.Add("Could not start timer. Try again.", Severity.Error);
+                Snackbar.Add("Could not start timer.", Severity.Error);
             }
         }
     }
@@ -244,14 +279,14 @@
         _editing = false;
         if (string.IsNullOrWhiteSpace(_editTitle) || _editTitle == SubTask.Title) return;
         var oldTitle = SubTask.Title;
-        SubTask.Title = _editTitle; // optimistic
+        SubTask.Title = _editTitle;
         try
         {
             await TaskService.UpdateTaskAsync(SubTask.Id, new UpdateTaskRequest { Title = _editTitle, Description = SubTask.Description });
         }
         catch
         {
-            SubTask.Title = oldTitle; // revert
+            SubTask.Title = oldTitle;
             Snackbar.Add("Could not update sub-task.", Severity.Error);
         }
     }
@@ -279,7 +314,7 @@
             _manualDuration = 0;
             _manualNotes = null;
             _showAddForm = false;
-            await OnTimerAction.InvokeAsync(); // parent re-fetches rollup
+            await OnTimerAction.InvokeAsync();
         }
         catch
         {
@@ -290,7 +325,6 @@
 
     private async Task HandleDelete()
     {
-        // Stop timer first if running on this sub-task
         if (IsActiveTimer)
         {
             try { await TimeEntryService.StopTimerAsync(SubTask.Id); TimerState.Clear(); }
@@ -308,18 +342,23 @@
         {
             await TimeEntryService.DeleteTimeEntryAsync(entry.Id);
             await OnTimerAction.InvokeAsync();
-            Snackbar.Add("Time entry deleted", Severity.Normal);
+            Snackbar.Add("Entry deleted", Severity.Normal);
         }
         catch
         {
             _entries?.Insert(0, entry);
             _totalSeconds += entry.DurationSeconds;
-            Snackbar.Add("Could not delete time entry.", Severity.Error);
+            Snackbar.Add("Could not delete entry.", Severity.Error);
         }
     }
 
     private static string FormatDuration(int seconds)
-        => $"{seconds / 3600}h {(seconds % 3600) / 60}m";
+    {
+        var h = seconds / 3600;
+        var m = (seconds % 3600) / 60;
+        if (h > 0) return $"{h}h {m:D2}m";
+        return $"{m}m";
+    }
 
     private static string FormatEntryDate(TimeEntryResponse entry)
         => (entry.StartTime ?? entry.EndTime ?? DateTime.UtcNow).ToString("MMM d");

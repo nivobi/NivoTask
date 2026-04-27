@@ -3,23 +3,30 @@
 
 @if (TimerState.IsRunning)
 {
-    <MudChip T="string"
-             Icon="@Icons.Material.Filled.Timer"
-             Color="Color.Primary"
-             Variant="Variant.Filled"
-             Size="Size.Small"
-             OnClick="OnChipClicked"
-             Class="mx-2"
-             Style="max-width: 240px;">
-        @TruncatedTitle - @FormattedElapsed
-    </MudChip>
+    <div @onclick="OnChipClicked" class="timer-chip d-flex align-center gap-2"
+         style="cursor: pointer; padding: 4px 12px; border-radius: 20px; background: rgba(99, 102, 241, 0.08); margin: 0 8px; user-select: none; transition: background 0.15s ease;">
+        <div style="width: 6px; height: 6px; border-radius: 50%; background: #6366f1; animation: pulse-dot 2s infinite;"></div>
+        <span style="font-size: 0.75rem; font-weight: 500; color: #6366f1; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;">
+            @TruncatedTitle
+        </span>
+        <span style="font-size: 0.75rem; font-weight: 600; color: #6366f1; font-variant-numeric: tabular-nums;">
+            @FormattedElapsed
+        </span>
+    </div>
 }
+
+<style>
+    @@keyframes pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+</style>
 
 @code {
     [Parameter] public EventCallback<int> OnNavigateToTask { get; set; }
 
-    private string TruncatedTitle => TimerState.ActiveTaskTitle?.Length > 20
-        ? TimerState.ActiveTaskTitle[..17] + "..."
+    private string TruncatedTitle => TimerState.ActiveTaskTitle?.Length > 24
+        ? TimerState.ActiveTaskTitle[..21] + "..."
         : TimerState.ActiveTaskTitle ?? "";
 
     private string FormattedElapsed
@@ -27,7 +34,10 @@
         get
         {
             var s = TimerState.ElapsedSeconds;
-            return $"{s / 3600}h {(s % 3600) / 60:D2}m";
+            var h = s / 3600;
+            var m = (s % 3600) / 60;
+            var sec = s % 60;
+            return h > 0 ? $"{h}:{m:D2}:{sec:D2}" : $"{m}:{sec:D2}";
         }
     }
 

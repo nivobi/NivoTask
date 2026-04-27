@@ -5,96 +5,151 @@
 @inject TimerStateService TimerState
 @inject ISnackbar Snackbar
 
-<div class="pa-4">
-    <!-- Close button -->
-    <div class="d-flex justify-end">
-        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="OnClose" />
+<div style="display: flex; flex-direction: column; height: 100%; background: #fff;">
+    @* Panel header *@
+    <div style="padding: 20px 24px 0; flex-shrink: 0;">
+        <div class="d-flex justify-space-between align-center mb-3">
+            <MudText Typo="Typo.body2" Style="opacity: 0.4; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;">
+                Task Detail
+            </MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                           OnClick="OnClose" Style="opacity: 0.4;" />
+        </div>
     </div>
 
     @if (_loading)
     {
-        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="60%" Height="28px" Class="mb-3" />
-        @for (int i = 0; i < 3; i++)
-        {
-            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="48px" Class="mb-2" />
-        }
+        <div style="padding: 0 24px;">
+            <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" Height="28px" Class="mb-3" />
+            <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="16px" Class="mb-6" />
+            @for (int i = 0; i < 3; i++)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="44px"
+                             Class="mb-2" Style="border-radius: 8px;" />
+            }
+        </div>
     }
     else if (_task is null)
     {
-        <MudText Typo="Typo.body1" Color="Color.Error">
-            Could not load task details. Check your connection and try again.
-        </MudText>
+        <div style="padding: 24px; text-align: center;">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Large"
+                     Style="opacity: 0.2; font-size: 48px;" Class="mb-3" />
+            <MudText Typo="Typo.body1" Style="opacity: 0.5;">
+                Could not load task details
+            </MudText>
+        </div>
     }
     else
     {
-        <!-- Header: title + total time (D-14) -->
-        <div class="d-flex justify-space-between align-start mb-2">
-            <div class="flex-grow-1 mr-4">
+        @* Scrollable content *@
+        <div style="flex: 1; overflow-y: auto; padding: 0 24px 24px;">
+
+            @* Title + total time *@
+            <div class="mb-1">
                 @if (_editingTitle)
                 {
                     <MudTextField T="string" @bind-Value="_editTitle" Variant="Variant.Text"
-                                  Typo="Typo.h6" AutoFocus="true"
+                                  AutoFocus="true" Style="font-size: 1.125rem; font-weight: 600;"
                                   OnKeyDown="HandleTitleKeyDown" OnBlur="SaveTitle" />
                 }
                 else
                 {
-                    <MudText Typo="Typo.h6" @onclick="StartEditingTitle" Style="cursor: text;">
+                    <MudText Typo="Typo.h6" @onclick="StartEditingTitle"
+                             Style="cursor: text; line-height: 1.4;">
                         @_task.Title
                     </MudText>
                 }
             </div>
-            <MudText Typo="Typo.h5" Style="white-space: nowrap; opacity: 0.87;">
-                @FormatTime(_task.TotalTimeSeconds)
-            </MudText>
-        </div>
 
-        <!-- Description -->
-        @if (_editingDescription)
-        {
-            <MudTextField T="string" @bind-Value="_editDescription" Variant="Variant.Text"
-                          Lines="3" Placeholder="Add a description..."
-                          OnBlur="SaveDescription" AutoFocus="true" Class="mb-4" />
-        }
-        else
-        {
-            <MudText Typo="Typo.body1" Style="opacity: 0.6; cursor: text;" Class="mb-4"
-                     @onclick="StartEditingDescription">
-                @(string.IsNullOrEmpty(_task.Description) ? "Add a description..." : _task.Description)
-            </MudText>
-        }
-
-        <MudDivider Class="mb-4" Style="opacity: 0.12;" />
-
-        <!-- Sub-task list -->
-        @if (_task.SubTasks.Count == 0)
-        {
-            <div class="d-flex flex-column align-center py-8">
-                <MudText Typo="Typo.body1" Align="Align.Center" Style="opacity: 0.6;">
-                    No sub-tasks yet
-                </MudText>
-                <MudText Typo="Typo.body2" Align="Align.Center" Style="opacity: 0.4;" Class="mt-1">
-                    Break this task into smaller pieces to track time on each.
-                </MudText>
-            </div>
-        }
-        else
-        {
-            @foreach (var subTask in _task.SubTasks)
+            @if (_task.TotalTimeSeconds > 0)
             {
-                <SubTaskRow SubTask="subTask"
-                            OnTimerAction="HandleTimerAction"
-                            OnDeleted="HandleSubTaskDeleted" />
+                <div class="d-flex align-center gap-1 mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small"
+                             Style="font-size: 14px; opacity: 0.35;" />
+                    <MudText Typo="Typo.body2" Style="opacity: 0.5; font-weight: 500;">
+                        @FormatTime(_task.TotalTimeSeconds) total
+                    </MudText>
+                </div>
             }
-        }
+            else
+            {
+                <div class="mb-3"></div>
+            }
 
-        <!-- Quick-add sub-task (D-12, IC-12) -->
-        <div class="mt-2">
-            <MudTextField T="string" @bind-Value="_newSubTaskTitle"
-                          Placeholder="Add sub-task..."
-                          Variant="Variant.Text"
-                          OnKeyDown="HandleAddSubTaskKeyDown"
-                          Disabled="_creatingSubTask"
-                          Immediate="true" />
+            @* Description *@
+            @if (_editingDescription)
+            {
+                <MudTextField T="string" @bind-Value="_editDescription" Variant="Variant.Outlined"
+                              Lines="3" Placeholder="Add a description..."
+                              OnBlur="SaveDescription" AutoFocus="true" Class="mb-4"
+                              Style="font-size: 0.875rem;" />
+            }
+            else if (!string.IsNullOrEmpty(_task.Description))
+            {
+                <MudText Typo="Typo.body2" Style="opacity: 0.6; cursor: text; line-height: 1.6;" Class="mb-4"
+                         @onclick="StartEditingDescription">
+                    @_task.Description
+                </MudText>
+            }
+            else
+            {
+                <div class="mb-2" style="cursor: text;" @onclick="StartEditingDescription">
+                    <MudText Typo="Typo.body2" Style="opacity: 0.3; font-style: italic;">
+                        Add a description...
+                    </MudText>
+                </div>
+            }
+
+            @* Sub-tasks section *@
+            <div style="margin-top: 8px;">
+                <div class="d-flex align-center justify-space-between mb-2">
+                    <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.4; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;">
+                        Sub-tasks
+                        @if (_task.SubTasks.Count > 0)
+                        {
+                            <span style="font-weight: 400; margin-left: 4px;">(@_task.SubTasks.Count)</span>
+                        }
+                    </MudText>
+                </div>
+
+                @if (_task.SubTasks.Count == 0)
+                {
+                    <div style="padding: 32px 0; text-align: center;">
+                        <MudIcon Icon="@Icons.Material.Outlined.Checklist" Size="Size.Large"
+                                 Style="font-size: 40px; opacity: 0.12;" Class="mb-2" />
+                        <MudText Typo="Typo.body2" Style="opacity: 0.35;">
+                            No sub-tasks yet
+                        </MudText>
+                        <MudText Typo="Typo.body2" Style="opacity: 0.25; font-size: 0.75rem;" Class="mt-1">
+                            Type below to add one
+                        </MudText>
+                    </div>
+                }
+                else
+                {
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        @foreach (var subTask in _task.SubTasks)
+                        {
+                            <SubTaskRow SubTask="subTask"
+                                        OnTimerAction="HandleTimerAction"
+                                        OnDeleted="HandleSubTaskDeleted" />
+                        }
+                    </div>
+                }
+
+                @* Quick-add sub-task *@
+                <div style="margin-top: 8px; padding: 4px 0;">
+                    <MudTextField T="string" @bind-Value="_newSubTaskTitle"
+                                  Placeholder="Add sub-task..."
+                                  Variant="Variant.Text"
+                                  OnKeyDown="HandleAddSubTaskKeyDown"
+                                  Disabled="_creatingSubTask"
+                                  Immediate="true"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Add"
+                                  Style="font-size: 0.875rem;" />
+                </div>
+            </div>
         </div>
     }
 </div>
@@ -141,7 +196,7 @@
         }
         catch
         {
-            Snackbar.Add("Could not load task details. Check your connection and try again.", Severity.Error);
+            Snackbar.Add("Could not load task details.", Severity.Error);
             _task = null;
         }
         _loading = false;
@@ -215,7 +270,7 @@
         try
         {
             await TaskService.DeleteTaskAsync(subTaskId);
-            await HandleTimerAction(); // update rollup
+            await HandleTimerAction();
             Snackbar.Add("Sub-task deleted", Severity.Normal);
         }
         catch
@@ -227,5 +282,10 @@
     }
 
     private static string FormatTime(int seconds)
-        => $"{seconds / 3600}h {(seconds % 3600) / 60}m";
+    {
+        var h = seconds / 3600;
+        var m = (seconds % 3600) / 60;
+        if (h > 0) return $"{h}h {m:D2}m";
+        return $"{m}m";
+    }
 }

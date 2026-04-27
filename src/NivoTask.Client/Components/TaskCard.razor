@@ -1,26 +1,30 @@
 @using NivoTask.Client.Models
 
-<MudCard Elevation="1" Class="task-card pa-2 mb-2" @onclick="HandleClick">
+<MudCard Elevation="0" Class="task-card pa-3 mb-2" @onclick="HandleClick">
     <MudCardContent Class="pa-0">
-        <MudText Typo="Typo.body1" Class="mud-text-truncate">@Item.Title</MudText>
+        <MudText Typo="Typo.body2" Style="font-weight: 500; line-height: 1.45;">@Item.Title</MudText>
         @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
         {
-            <div class="d-flex justify-space-between mt-1">
+            <div class="d-flex align-center gap-3 mt-2">
                 @if (Item.SubTaskCount > 0)
                 {
-                    <MudText Typo="Typo.body2" Color="Color.Default" Style="opacity: 0.6;">
-                        @Item.SubTaskProgress
-                    </MudText>
-                }
-                else
-                {
-                    <span></span>
+                    <div class="d-flex align-center gap-1">
+                        <MudIcon Icon="@Icons.Material.Outlined.Checklist" Size="Size.Small"
+                                 Style="font-size: 13px; opacity: 0.3;" />
+                        <MudText Typo="Typo.body2" Style="opacity: 0.35; font-size: 0.6875rem;">
+                            @Item.SubTaskProgress
+                        </MudText>
+                    </div>
                 }
                 @if (Item.TotalTimeSeconds > 0)
                 {
-                    <MudText Typo="Typo.body2" Color="Color.Default" Style="opacity: 0.6;">
-                        @Item.FormattedTime
-                    </MudText>
+                    <div class="d-flex align-center gap-1">
+                        <MudIcon Icon="@Icons.Material.Outlined.Schedule" Size="Size.Small"
+                                 Style="font-size: 13px; opacity: 0.3;" />
+                        <MudText Typo="Typo.body2" Style="opacity: 0.35; font-size: 0.6875rem; font-variant-numeric: tabular-nums;">
+                            @Item.FormattedTime
+                        </MudText>
+                    </div>
                 }
             </div>
         }

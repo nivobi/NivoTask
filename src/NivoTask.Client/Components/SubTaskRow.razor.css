@@ -1,30 +1,23 @@
 .subtask-row {
+    border-radius: 8px;
     transition: background-color 0.15s ease;
 }
 
 .subtask-row:hover {
-    background-color: rgba(0, 0, 0, 0.02);
+    background-color: rgba(0, 0, 0, 0.025);
 }
 
 .subtask-row.active-timer {
-    border-left: 4px solid var(--mud-palette-primary);
-    background-color: rgba(89, 74, 226, 0.04);
+    border-left: 3px solid var(--mud-palette-secondary);
+    background-color: rgba(99, 102, 241, 0.04);
+    padding-left: 1px;
 }
 
-.delete-subtask {
-    opacity: 0;
-    transition: opacity 0.15s ease;
+.entry-row {
+    border-radius: 4px;
+    transition: background-color 0.1s ease;
 }
 
-.subtask-row:hover .delete-subtask {
-    opacity: 1;
-}
-
-.entry-actions {
-    opacity: 0;
-    transition: opacity 0.15s ease;
-}
-
-.entry-row:hover .entry-actions {
-    opacity: 1;
+.entry-row:hover {
+    background-color: rgba(0, 0, 0, 0.02);
 }

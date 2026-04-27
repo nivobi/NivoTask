@@ -1,8 +1,16 @@
 .task-card {
     cursor: pointer;
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    border-radius: 10px !important;
 }
 
 .task-card:hover {
-    box-shadow: var(--mud-elevation-3);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
+}
+
+.task-card:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
