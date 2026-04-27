@@ -115,6 +115,9 @@ else
             _columns = _board.Columns.OrderBy(c => c.SortOrder).ToList();
             _taskItems = await BoardService.GetBoardTasksAsync(BoardId);
 
+            // Set app bar context (board name + settings icon)
+            Layout?.SetBoardContext(_board.Name, _board.Id);
+
             // Store as last-used board (D-03)
             await LocalStorage.SetAsync("lastBoardId", BoardId.ToString());
         }
