@@ -1,0 +1,87 @@
+@inject BoardService BoardService
+@inject NavigationManager Navigation
+
+<MudNavMenu>
+    @if (_boards is null)
+    {
+        @for (int i = 0; i < 4; i++)
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="200px" Height="32px" Class="mb-2 ml-2" />
+        }
+    }
+    else
+    {
+        @foreach (var board in _boards)
+        {
+            <MudNavLink Href="@($"/boards/{board.Id}")"
+                        Icon="@(board.Icon ?? Icons.Material.Filled.Dashboard)"
+                        Match="NavLinkMatch.Prefix">
+                @if (IsExpanded)
+                {
+                    <div class="d-flex align-center gap-2">
+                        @if (!string.IsNullOrEmpty(board.Color))
+                        {
+                            <span style="width:12px;height:12px;border-radius:50%;background:@board.Color;display:inline-block;flex-shrink:0;"></span>
+                        }
+                        <MudText Typo="Typo.body1" Class="mud-text-truncate">@board.Name</MudText>
+                    </div>
+                }
+                else
+                {
+                    <MudTooltip Text="@board.Name" Placement="Placement.Right">
+                        <span></span>
+                    </MudTooltip>
+                }
+            </MudNavLink>
+        }
+    }
+</MudNavMenu>
+
+<div class="mt-auto pa-2">
+    @if (IsExpanded)
+    {
+        <MudButton Variant="Variant.Text" Color="Color.Primary" FullWidth="true"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="OnNewBoardClicked">
+            New Board
+        </MudButton>
+    }
+    else
+    {
+        <MudTooltip Text="New Board" Placement="Placement.Right">
+            <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary"
+                           OnClick="OnNewBoardClicked" />
+        </MudTooltip>
+    }
+</div>
+
+@code {
+    [Parameter] public bool IsExpanded { get; set; }
+    [Parameter] public int ActiveBoardId { get; set; }
+    [Parameter] public EventCallback<int> OnBoardSelected { get; set; }
+
+    private List<BoardSummaryResponse>? _boards;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadBoardsAsync();
+    }
+
+    public async Task LoadBoardsAsync()
+    {
+        try
+        {
+            _boards = await BoardService.GetBoardsAsync();
+        }
+        catch
+        {
+            _boards = [];
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnNewBoardClicked()
+    {
+        // CreateBoardDialog wired in Plan 05
+        await Task.CompletedTask;
+    }
+}
