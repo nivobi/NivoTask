@@ -1,0 +1,326 @@
+@using NivoTask.Shared.Dtos.TimeEntries
+@implements IDisposable
+@inject TimerStateService TimerState
+@inject TimeEntryService TimeEntryService
+@inject TaskService TaskService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<div class="subtask-row @(IsActiveTimer ? "active-timer" : "")" style="border-radius: 8px;">
+    <div class="d-flex align-center gap-2 pa-2" style="min-height: 48px;">
+        <MudIconButton Icon="@TimerIcon" Size="Size.Small"
+                       Color="@(IsActiveTimer ? Color.Primary : Color.Default)"
+                       OnClick="HandleTimerToggle" />
+        @if (_editing)
+        {
+            <MudTextField T="string" @bind-Value="_editTitle" Variant="Variant.Text"
+                          Class="flex-grow-1" Immediate="true"
+                          OnKeyDown="HandleEditKeyDown" OnBlur="SaveEdit"
+                          AutoFocus="true" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body1" Class="flex-grow-1 mud-text-truncate"
+                     @onclick="StartEditing" Style="cursor: text;">
+                @SubTask.Title
+            </MudText>
+        }
+        <MudText Typo="Typo.body2" Style="opacity: 0.6; white-space: nowrap;">@FormattedTime</MudText>
+        <div class="delete-subtask">
+            <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                           Color="Color.Error" OnClick="HandleDelete" />
+        </div>
+        <MudIconButton Icon="@(_expanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                       Size="Size.Small" Color="Color.Default"
+                       OnClick="ToggleExpand" />
+    </div>
+
+    @if (_expanded)
+    {
+        <div class="pa-2" style="padding-left: 48px;">
+            @if (_loadingEntries)
+            {
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="24px" />
+            }
+            else if (_entries is not null)
+            {
+                @if (_entries.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Style="opacity: 0.6;">
+                        No time entries yet. Start a timer or add a manual entry.
+                    </MudText>
+                }
+                else
+                {
+                    @foreach (var entry in _entries)
+                    {
+                        <div class="d-flex align-center gap-2 py-1 entry-row">
+                            <MudText Typo="Typo.body2" Style="opacity: 0.6; min-width: 60px;">
+                                @FormatEntryDate(entry)
+                            </MudText>
+                            <MudText Typo="Typo.body2" Style="min-width: 60px;">
+                                @FormatDuration(entry.DurationSeconds)
+                            </MudText>
+                            <MudIcon Icon="@(entry.IsManual ? Icons.Material.Filled.Edit : Icons.Material.Filled.Timer)"
+                                     Size="Size.Small" Style="opacity: 0.4; font-size: 16px;" />
+                            @if (!string.IsNullOrEmpty(entry.Notes))
+                            {
+                                <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate" Style="opacity: 0.6;">
+                                    @entry.Notes
+                                </MudText>
+                            }
+                            <div class="entry-actions">
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error" OnClick="() => DeleteEntry(entry)" />
+                            </div>
+                        </div>
+                    }
+                }
+
+                @if (_showAddForm)
+                {
+                    <div class="d-flex align-center gap-2 mt-2">
+                        <MudTextField T="int" @bind-Value="_manualDuration" Label="Minutes"
+                                      Variant="Variant.Outlined" Style="max-width: 100px;"
+                                      Adornment="Adornment.End" AdornmentText="min" />
+                        <MudTextField T="string" @bind-Value="_manualNotes" Label="Notes (optional)"
+                                      Variant="Variant.Outlined" Class="flex-grow-1" />
+                        <MudButton Variant="Variant.Text" OnClick="() => _showAddForm = false">Cancel</MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                   OnClick="AddManualEntry" Disabled="_saving">Add</MudButton>
+                    </div>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Add" OnClick="() => _showAddForm = true"
+                               Class="mt-1">
+                        Add entry
+                    </MudButton>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public TaskResponse SubTask { get; set; } = null!;
+    [Parameter] public EventCallback OnTimerAction { get; set; }
+    [Parameter] public EventCallback<int> OnDeleted { get; set; }
+
+    private bool IsActiveTimer => TimerState.ActiveTaskId == SubTask.Id;
+    private string TimerIcon => IsActiveTimer ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow;
+
+    private string FormattedTime => $"{_totalSeconds / 3600}h {(_totalSeconds % 3600) / 60}m";
+
+    private bool _expanded;
+    private List<TimeEntryResponse>? _entries;
+    private bool _loadingEntries;
+    private bool _editing;
+    private string _editTitle = "";
+    private bool _showAddForm;
+    private int _manualDuration;
+    private string? _manualNotes;
+    private bool _saving;
+    private int _totalSeconds;
+
+    protected override void OnInitialized()
+        => TimerState.OnTimerChanged += HandleTimerChanged;
+
+    private async void HandleTimerChanged()
+        => await InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => TimerState.OnTimerChanged -= HandleTimerChanged;
+
+    private async Task HandleTimerToggle()
+    {
+        if (IsActiveTimer)
+        {
+            // Pause: stop active timer (IC-06)
+            TimerState.Clear(); // optimistic
+            try
+            {
+                await TimeEntryService.StopTimerAsync(SubTask.Id);
+                await LoadEntries(); // refresh entries list
+                await OnTimerAction.InvokeAsync(); // parent re-fetches rollup
+            }
+            catch
+            {
+                // Revert: re-fetch active timer
+                try
+                {
+                    var active = await TimeEntryService.GetActiveTimerAsync();
+                    if (active is not null)
+                        TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                }
+                catch { }
+                Snackbar.Add("Could not stop timer. Try again.", Severity.Error);
+            }
+        }
+        else
+        {
+            // Start: attempt to start timer (IC-04)
+            var response = await TimeEntryService.StartTimerAsync(SubTask.Id);
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                // 409: show switch dialog (IC-05, D-07)
+                var activeTimer = await response.Content.ReadFromJsonAsync<ActiveTimerResponse>();
+                if (activeTimer is null) return;
+
+                var parameters = new DialogParameters<TimerSwitchDialog>
+                {
+                    { x => x.ActiveTaskTitle, activeTimer.TaskTitle },
+                    { x => x.ActiveElapsedSeconds, TimerState.ElapsedSeconds },
+                    { x => x.NewTaskTitle, SubTask.Title }
+                };
+                var dialog = await DialogService.ShowAsync<TimerSwitchDialog>(
+                    "Switch Timer?", parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall });
+                var result = await dialog.Result;
+                if (result is not null && !result.Canceled)
+                {
+                    // Switch: stop old, start new
+                    try
+                    {
+                        await TimeEntryService.StopTimerAsync(activeTimer.TaskId);
+                        var startResponse = await TimeEntryService.StartTimerAsync(SubTask.Id);
+                        startResponse.EnsureSuccessStatusCode();
+                        var newTimer = await TimeEntryService.GetActiveTimerAsync();
+                        if (newTimer is not null)
+                            TimerState.SetActive(newTimer.TaskId, newTimer.TaskTitle, newTimer.EntryId, newTimer.StartTime);
+                        await OnTimerAction.InvokeAsync();
+                    }
+                    catch
+                    {
+                        Snackbar.Add("Could not switch timer. Try again.", Severity.Error);
+                    }
+                }
+            }
+            else if (response.IsSuccessStatusCode)
+            {
+                // Started successfully: update timer state
+                var active = await TimeEntryService.GetActiveTimerAsync();
+                if (active is not null)
+                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+            }
+            else
+            {
+                Snackbar.Add("Could not start timer. Try again.", Severity.Error);
+            }
+        }
+    }
+
+    private async Task ToggleExpand()
+    {
+        _expanded = !_expanded;
+        if (_expanded && _entries is null)
+            await LoadEntries();
+    }
+
+    private async Task LoadEntries()
+    {
+        _loadingEntries = true;
+        try
+        {
+            _entries = await TimeEntryService.GetTimeEntriesAsync(SubTask.Id);
+            _totalSeconds = _entries.Where(e => !e.IsRunning).Sum(e => e.DurationSeconds);
+        }
+        catch
+        {
+            _entries = [];
+            Snackbar.Add("Could not load time entries.", Severity.Error);
+        }
+        _loadingEntries = false;
+    }
+
+    private void StartEditing()
+    {
+        _editTitle = SubTask.Title;
+        _editing = true;
+    }
+
+    private async Task SaveEdit()
+    {
+        _editing = false;
+        if (string.IsNullOrWhiteSpace(_editTitle) || _editTitle == SubTask.Title) return;
+        var oldTitle = SubTask.Title;
+        SubTask.Title = _editTitle; // optimistic
+        try
+        {
+            await TaskService.UpdateTaskAsync(SubTask.Id, new UpdateTaskRequest { Title = _editTitle, Description = SubTask.Description });
+        }
+        catch
+        {
+            SubTask.Title = oldTitle; // revert
+            Snackbar.Add("Could not update sub-task.", Severity.Error);
+        }
+    }
+
+    private async Task HandleEditKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveEdit();
+        else if (e.Key == "Escape") { _editing = false; }
+    }
+
+    private async Task AddManualEntry()
+    {
+        if (_manualDuration < 1 || _manualDuration > 1440) return;
+        _saving = true;
+        try
+        {
+            var entry = await TimeEntryService.CreateManualEntryAsync(SubTask.Id,
+                new CreateTimeEntryRequest { DurationMinutes = _manualDuration, Notes = _manualNotes });
+            if (entry is not null)
+            {
+                _entries ??= [];
+                _entries.Insert(0, entry);
+                _totalSeconds += entry.DurationSeconds;
+            }
+            _manualDuration = 0;
+            _manualNotes = null;
+            _showAddForm = false;
+            await OnTimerAction.InvokeAsync(); // parent re-fetches rollup
+        }
+        catch
+        {
+            Snackbar.Add("Could not add time entry.", Severity.Error);
+        }
+        _saving = false;
+    }
+
+    private async Task HandleDelete()
+    {
+        // Stop timer first if running on this sub-task
+        if (IsActiveTimer)
+        {
+            try { await TimeEntryService.StopTimerAsync(SubTask.Id); TimerState.Clear(); }
+            catch { }
+        }
+        await OnDeleted.InvokeAsync(SubTask.Id);
+    }
+
+    private async Task DeleteEntry(TimeEntryResponse entry)
+    {
+        _entries?.Remove(entry);
+        _totalSeconds -= entry.DurationSeconds;
+        StateHasChanged();
+        try
+        {
+            await TimeEntryService.DeleteTimeEntryAsync(entry.Id);
+            await OnTimerAction.InvokeAsync();
+            Snackbar.Add("Time entry deleted", Severity.Normal);
+        }
+        catch
+        {
+            _entries?.Insert(0, entry);
+            _totalSeconds += entry.DurationSeconds;
+            Snackbar.Add("Could not delete time entry.", Severity.Error);
+        }
+    }
+
+    private static string FormatDuration(int seconds)
+        => $"{seconds / 3600}h {(seconds % 3600) / 60}m";
+
+    private static string FormatEntryDate(TimeEntryResponse entry)
+        => (entry.StartTime ?? entry.EndTime ?? DateTime.UtcNow).ToString("MMM d");
+}

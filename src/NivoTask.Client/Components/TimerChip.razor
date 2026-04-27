@@ -1,0 +1,48 @@
+@implements IDisposable
+@inject TimerStateService TimerState
+
+@if (TimerState.IsRunning)
+{
+    <MudChip T="string"
+             Icon="@Icons.Material.Filled.Timer"
+             Color="Color.Primary"
+             Variant="Variant.Filled"
+             Size="Size.Small"
+             OnClick="OnChipClicked"
+             Class="mx-2"
+             Style="max-width: 240px;">
+        @TruncatedTitle - @FormattedElapsed
+    </MudChip>
+}
+
+@code {
+    [Parameter] public EventCallback<int> OnNavigateToTask { get; set; }
+
+    private string TruncatedTitle => TimerState.ActiveTaskTitle?.Length > 20
+        ? TimerState.ActiveTaskTitle[..17] + "..."
+        : TimerState.ActiveTaskTitle ?? "";
+
+    private string FormattedElapsed
+    {
+        get
+        {
+            var s = TimerState.ElapsedSeconds;
+            return $"{s / 3600}h {(s % 3600) / 60:D2}m";
+        }
+    }
+
+    protected override void OnInitialized()
+        => TimerState.OnTimerChanged += HandleTimerChanged;
+
+    private async void HandleTimerChanged()
+        => await InvokeAsync(StateHasChanged);
+
+    private async Task OnChipClicked()
+    {
+        if (TimerState.ActiveTaskId.HasValue)
+            await OnNavigateToTask.InvokeAsync(TimerState.ActiveTaskId.Value);
+    }
+
+    public void Dispose()
+        => TimerState.OnTimerChanged -= HandleTimerChanged;
+}

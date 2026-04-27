@@ -1,0 +1,30 @@
+.subtask-row {
+    transition: background-color 0.15s ease;
+}
+
+.subtask-row:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.subtask-row.active-timer {
+    border-left: 4px solid var(--mud-palette-primary);
+    background-color: rgba(89, 74, 226, 0.04);
+}
+
+.delete-subtask {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.subtask-row:hover .delete-subtask {
+    opacity: 1;
+}
+
+.entry-actions {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.entry-row:hover .entry-actions {
+    opacity: 1;
+}

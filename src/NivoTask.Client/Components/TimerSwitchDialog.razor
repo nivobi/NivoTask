@@ -1,0 +1,27 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Switch Timer?</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body1">
+            A timer is running on <b>@ActiveTaskTitle</b> (@FormattedElapsed). Switch to <b>@NewTaskTitle</b>?
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Confirm">Switch Timer</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string ActiveTaskTitle { get; set; } = string.Empty;
+    [Parameter] public int ActiveElapsedSeconds { get; set; }
+    [Parameter] public string NewTaskTitle { get; set; } = string.Empty;
+
+    private string FormattedElapsed => $"{ActiveElapsedSeconds / 3600}h {(ActiveElapsedSeconds % 3600) / 60}m";
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+}
