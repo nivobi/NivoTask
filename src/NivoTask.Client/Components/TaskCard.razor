@@ -1,0 +1,32 @@
+@using NivoTask.Client.Models
+
+<MudCard Elevation="1" Class="task-card pa-2 mb-2">
+    <MudCardContent Class="pa-0">
+        <MudText Typo="Typo.body1" Class="mud-text-truncate">@Item.Title</MudText>
+        @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
+        {
+            <div class="d-flex justify-space-between mt-1">
+                @if (Item.SubTaskCount > 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Default" Style="opacity: 0.6;">
+                        @Item.SubTaskProgress
+                    </MudText>
+                }
+                else
+                {
+                    <span></span>
+                }
+                @if (Item.TotalTimeSeconds > 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Default" Style="opacity: 0.6;">
+                        @Item.FormattedTime
+                    </MudText>
+                }
+            </div>
+        }
+    </MudCardContent>
+</MudCard>
+
+@code {
+    [Parameter] public BoardTaskItem Item { get; set; } = null!;
+}

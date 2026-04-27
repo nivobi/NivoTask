@@ -1,0 +1,55 @@
+@using NivoTask.Client.Models
+@using NivoTask.Shared.Dtos.Tasks
+
+<div class="d-flex align-center gap-1 mt-2">
+    <MudTextField @bind-Value="_title" Placeholder="Add a task..." Variant="Variant.Text"
+                  Immediate="true" Class="flex-grow-1"
+                  OnKeyDown="HandleKeyDown" Disabled="_creating" />
+    <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Size="Size.Small"
+                   OnClick="HandleSubmit" Disabled="@(string.IsNullOrWhiteSpace(_title) || _creating)" />
+</div>
+
+@code {
+    [Parameter] public int BoardId { get; set; }
+    [Parameter] public int ColumnId { get; set; }
+    [Parameter] public EventCallback<TaskResponse> OnTaskCreated { get; set; }
+
+    [Inject] private TaskService TaskService { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
+    private string _title = string.Empty;
+    private bool _creating;
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_title))
+        {
+            await HandleSubmit();
+        }
+    }
+
+    private async Task HandleSubmit()
+    {
+        if (string.IsNullOrWhiteSpace(_title) || _creating) return;
+
+        _creating = true;
+        try
+        {
+            var task = await TaskService.CreateTaskAsync(BoardId, ColumnId,
+                new CreateTaskRequest { Title = _title.Trim() });
+            _title = string.Empty;
+            if (task is not null)
+            {
+                await OnTaskCreated.InvokeAsync(task);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Could not create task. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+}

@@ -1,0 +1,188 @@
+@page "/boards/{BoardId:int}"
+@attribute [Authorize]
+@inject BoardService BoardService
+@inject TaskService TaskService
+@inject LocalStorageService LocalStorage
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+@if (_loading)
+{
+    <div class="d-flex flex-row pa-2" style="overflow-x: auto;">
+        @for (int i = 0; i < 3; i++)
+        {
+            <MudPaper Class="ma-2 pa-2" Style="min-width: 300px; max-width: 300px;">
+                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="24px" Class="mb-3" />
+                @for (int j = 0; j < 3; j++)
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="60px" Class="mb-2" />
+                }
+            </MudPaper>
+        }
+    </div>
+}
+else if (_board is null)
+{
+    <MudAlert Severity="Severity.Error">Could not load board. Check your connection and try again.</MudAlert>
+}
+else if (_columns.Count == 0)
+{
+    <div class="d-flex flex-column justify-center align-center" style="height: 60vh;">
+        <MudIcon Icon="@Icons.Material.Filled.ViewColumn" Size="Size.Large" Class="mb-4"
+                 Style="font-size: 64px; color: var(--mud-palette-text-secondary);" />
+        <MudText Typo="Typo.body1" Align="Align.Center">
+            This board has no columns yet. Open Board Settings to add your first column.
+        </MudText>
+    </div>
+}
+else
+{
+    <MudDropContainer T="BoardTaskItem"
+                      @ref="_dropContainer"
+                      Items="_taskItems"
+                      ItemsSelector="@((item, zone) => item.ColumnIdentifier == zone)"
+                      ItemDropped="OnTaskDropped"
+                      Class="d-flex flex-row flex-grow-1"
+                      Style="overflow-x: auto;">
+        <ChildContent>
+            @foreach (var column in _columns)
+            {
+                <MudPaper Class="ma-2 pa-2 d-flex flex-column" Style="min-width: 300px; max-width: 300px;" Elevation="0">
+                    <MudText Typo="Typo.subtitle1" Class="mb-2">
+                        @column.Name (@_taskItems.Count(t => t.ColumnIdentifier == column.Id.ToString()))
+                    </MudText>
+                    <MudDropZone T="BoardTaskItem"
+                                 Identifier="@column.Id.ToString()"
+                                 AllowReorder="true"
+                                 CanDropClass="mud-border-info"
+                                 Class="d-flex flex-column flex-grow-1 pa-1"
+                                 Style="min-height: 200px; overflow-y: auto;">
+                    </MudDropZone>
+                    <QuickAddTask BoardId="BoardId" ColumnId="@column.Id" OnTaskCreated="HandleTaskCreated" />
+                </MudPaper>
+            }
+        </ChildContent>
+        <ItemRenderer>
+            <TaskCard Item="@context" />
+        </ItemRenderer>
+    </MudDropContainer>
+}
+
+@code {
+    [Parameter] public int BoardId { get; set; }
+
+    private MudDropContainer<BoardTaskItem>? _dropContainer;
+    private BoardResponse? _board;
+    private List<ColumnResponse> _columns = [];
+    private List<BoardTaskItem> _taskItems = [];
+    private bool _loading = true;
+
+    private const int SortGap = 1000;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadBoardAsync();
+    }
+
+    private async Task LoadBoardAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            _board = await BoardService.GetBoardAsync(BoardId);
+            if (_board is null)
+            {
+                _loading = false;
+                return;
+            }
+
+            _columns = _board.Columns.OrderBy(c => c.SortOrder).ToList();
+            _taskItems = await BoardService.GetBoardTasksAsync(BoardId);
+
+            // Store as last-used board (D-03)
+            await LocalStorage.SetAsync("lastBoardId", BoardId.ToString());
+        }
+        catch
+        {
+            Snackbar.Add("Could not load board. Check your connection and try again.", Severity.Error);
+            _board = null;
+        }
+
+        _loading = false;
+    }
+
+    private async Task OnTaskDropped(MudItemDropInfo<BoardTaskItem> dropInfo)
+    {
+        var item = dropInfo.Item;
+        if (item is null) return;
+
+        // Capture pre-move state for revert (D-09)
+        var previousColumn = item.ColumnIdentifier;
+        var previousSortOrder = item.SortOrder;
+
+        // Apply optimistic update
+        item.ColumnIdentifier = dropInfo.DropzoneIdentifier;
+
+        // Calculate new sort order based on neighbors (Pitfall 4)
+        var columnTasks = _taskItems
+            .Where(t => t.ColumnIdentifier == dropInfo.DropzoneIdentifier && t != item)
+            .OrderBy(t => t.SortOrder)
+            .ToList();
+
+        // IndexInZone provides the drop position (verified in Task 1)
+        int targetIndex = dropInfo.IndexInZone;
+        int newSortOrder = CalculateSortOrder(columnTasks, targetIndex);
+        item.SortOrder = newSortOrder;
+
+        try
+        {
+            await TaskService.MoveTaskAsync(item.Id, new MoveTaskRequest
+            {
+                TargetColumnId = int.Parse(dropInfo.DropzoneIdentifier),
+                NewSortOrder = newSortOrder
+            });
+        }
+        catch
+        {
+            // Revert optimistic update (D-09)
+            item.ColumnIdentifier = previousColumn;
+            item.SortOrder = previousSortOrder;
+            Snackbar.Add("Failed to move task. Please try again.", Severity.Error);
+            _dropContainer?.Refresh();
+        }
+    }
+
+    private int CalculateSortOrder(List<BoardTaskItem> siblings, int targetIndex)
+    {
+        if (siblings.Count == 0)
+            return SortGap;
+
+        if (targetIndex <= 0)
+            return siblings[0].SortOrder - SortGap;
+
+        if (targetIndex >= siblings.Count)
+            return siblings[^1].SortOrder + SortGap;
+
+        var above = siblings[targetIndex - 1].SortOrder;
+        var below = siblings[targetIndex].SortOrder;
+        return (above + below) / 2;
+    }
+
+    private void HandleTaskCreated(TaskResponse task)
+    {
+        // Add new task to the local list (optimistic)
+        _taskItems.Add(new BoardTaskItem
+        {
+            Id = task.Id,
+            Title = task.Title,
+            SortOrder = task.SortOrder,
+            ColumnIdentifier = task.ColumnId.ToString(),
+            SubTaskCount = 0,
+            CompletedSubTaskCount = 0,
+            TotalTimeSeconds = 0
+        });
+        _dropContainer?.Refresh();
+    }
+}
