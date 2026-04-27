@@ -61,7 +61,7 @@
                Style="box-shadow: -8px 0 32px rgba(0,0,0,0.08);">
         @if (_selectedTaskId > 0)
         {
-            <TaskDetailPanel TaskId="_selectedTaskId" OnClose="CloseDetailPanel" />
+            <TaskDetailPanel TaskId="_selectedTaskId" OnClose="CloseDetailPanel" OnDeleted="HandleTaskDeleted" />
         }
     </MudDrawer>
 </MudLayout>
@@ -198,6 +198,13 @@
         _detailPanelOpen = false;
         _selectedTaskId = 0;
         StateHasChanged();
+    }
+
+    private void HandleTaskDeleted(int taskId)
+    {
+        CloseDetailPanel();
+        // Force board page to reload by navigating to same URL
+        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

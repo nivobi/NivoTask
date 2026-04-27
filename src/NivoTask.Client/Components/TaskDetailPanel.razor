@@ -4,6 +4,7 @@
 @inject TimeEntryService TimeEntryService
 @inject TimerStateService TimerState
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <div style="display: flex; flex-direction: column; height: 100%; background: #fff;">
     @* Panel header *@
@@ -12,8 +13,12 @@
             <MudText Typo="Typo.body2" Style="opacity: 0.4; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;">
                 Task Detail
             </MudText>
-            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
-                           OnClick="OnClose" Style="opacity: 0.4;" />
+            <div class="d-flex align-center gap-1">
+                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Size="Size.Small"
+                               OnClick="HandleDeleteTask" Style="opacity: 0.3;" Title="Delete task" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                               OnClick="OnClose" Style="opacity: 0.4;" />
+            </div>
         </div>
     </div>
 
@@ -157,6 +162,7 @@
 @code {
     [Parameter] public int TaskId { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<int> OnDeleted { get; set; }
 
     private TaskDetailResponse? _task;
     private bool _loading = true;
@@ -278,6 +284,28 @@
             if (removed is not null) _task!.SubTasks.Add(removed);
             Snackbar.Add("Could not delete sub-task.", Severity.Error);
             StateHasChanged();
+        }
+    }
+
+    private async Task HandleDeleteTask()
+    {
+        if (_task is null) return;
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Delete task",
+            $"Delete \"{_task.Title}\" and all its sub-tasks and time entries? This cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+        if (result == true)
+        {
+            try
+            {
+                await TaskService.DeleteTaskAsync(_task.Id);
+                await OnDeleted.InvokeAsync(_task.Id);
+            }
+            catch
+            {
+                Snackbar.Add("Could not delete task.", Severity.Error);
+            }
         }
     }
 
