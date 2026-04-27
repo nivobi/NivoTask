@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -10,31 +10,36 @@ namespace NivoTask.Api.Data.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_TimeEntries_ActiveTimer",
-                table: "TimeEntries");
+            // MySQL won't drop an index used by a FK. The UserId FK index is shared.
+            // Fix ghost manual entries first, then recreate the filtered index with raw SQL.
 
-            migrationBuilder.CreateIndex(
-                name: "IX_TimeEntries_ActiveTimer",
-                table: "TimeEntries",
-                column: "UserId",
-                unique: true,
-                filter: "`StartTime` IS NOT NULL AND `EndTime` IS NULL");
+            // 1. Fix any remaining ghost manual entries
+            migrationBuilder.Sql(
+                "UPDATE `TimeEntries` SET `EndTime` = UTC_TIMESTAMP() WHERE `StartTime` IS NULL AND `EndTime` IS NULL");
+
+            // 2. Drop the old filtered unique index and recreate with correct filter
+            //    Must drop FK constraint first since MySQL uses the index for FK
+            migrationBuilder.Sql("ALTER TABLE `TimeEntries` DROP FOREIGN KEY `FK_TimeEntries_AspNetUsers_UserId`");
+            migrationBuilder.Sql("ALTER TABLE `TimeEntries` DROP INDEX `IX_TimeEntries_ActiveTimer`");
+            migrationBuilder.Sql(
+                "CREATE UNIQUE INDEX `IX_TimeEntries_ActiveTimer` ON `TimeEntries` (`UserId`) " +
+                "WHERE (`StartTime` IS NOT NULL AND `EndTime` IS NULL)");
+            migrationBuilder.Sql(
+                "ALTER TABLE `TimeEntries` ADD CONSTRAINT `FK_TimeEntries_AspNetUsers_UserId` " +
+                "FOREIGN KEY (`UserId`) REFERENCES `AspNetUsers` (`Id`) ON DELETE CASCADE");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_TimeEntries_ActiveTimer",
-                table: "TimeEntries");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_TimeEntries_ActiveTimer",
-                table: "TimeEntries",
-                column: "UserId",
-                unique: true,
-                filter: "`EndTime` IS NULL");
+            migrationBuilder.Sql("ALTER TABLE `TimeEntries` DROP FOREIGN KEY `FK_TimeEntries_AspNetUsers_UserId`");
+            migrationBuilder.Sql("ALTER TABLE `TimeEntries` DROP INDEX `IX_TimeEntries_ActiveTimer`");
+            migrationBuilder.Sql(
+                "CREATE UNIQUE INDEX `IX_TimeEntries_ActiveTimer` ON `TimeEntries` (`UserId`) " +
+                "WHERE (`EndTime` IS NULL)");
+            migrationBuilder.Sql(
+                "ALTER TABLE `TimeEntries` ADD CONSTRAINT `FK_TimeEntries_AspNetUsers_UserId` " +
+                "FOREIGN KEY (`UserId`) REFERENCES `AspNetUsers` (`Id`) ON DELETE CASCADE");
         }
     }
 }
