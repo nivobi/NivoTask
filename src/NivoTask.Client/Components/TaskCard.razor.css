@@ -1,5 +1,5 @@
 .task-card {
-    cursor: grab;
+    cursor: pointer;
     transition: box-shadow 0.2s ease;
 }
 
