@@ -50,7 +50,7 @@ public class TimeEntryCrudTests : AuthenticatedTestBase
         Assert.Equal(1800, entry.DurationSeconds); // 30 * 60
         Assert.Equal("Manual work", entry.Notes);
         Assert.Null(entry.StartTime);
-        Assert.Null(entry.EndTime);
+        Assert.NotNull(entry.EndTime); // Manual entries have EndTime set to avoid active timer index conflict
     }
 
     [Fact]

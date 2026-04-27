@@ -30,9 +30,10 @@ public class TimeEntriesController : ControllerBase
         if (task is null) return NotFound();
 
         // Proactive conflict check -- return 409 with active timer details (D-01)
+        // Filter: EndTime == null AND StartTime != null (excludes manual entries)
         var activeEntry = await _db.TimeEntries
             .Include(te => te.Task)
-            .FirstOrDefaultAsync(te => te.UserId == userId && te.EndTime == null);
+            .FirstOrDefaultAsync(te => te.UserId == userId && te.EndTime == null && te.StartTime != null);
 
         if (activeEntry is not null)
         {
@@ -83,7 +84,7 @@ public class TimeEntriesController : ControllerBase
 
         // Find active timer on this specific task (validates taskId match per Pitfall 3)
         var entry = await _db.TimeEntries
-            .FirstOrDefaultAsync(te => te.UserId == userId && te.TaskId == taskId && te.EndTime == null);
+            .FirstOrDefaultAsync(te => te.UserId == userId && te.TaskId == taskId && te.EndTime == null && te.StartTime != null);
 
         if (entry is null) return NotFound();
 
@@ -110,7 +111,7 @@ public class TimeEntriesController : ControllerBase
 
         var entry = await _db.TimeEntries
             .Include(te => te.Task)
-            .FirstOrDefaultAsync(te => te.UserId == userId && te.EndTime == null);
+            .FirstOrDefaultAsync(te => te.UserId == userId && te.EndTime == null && te.StartTime != null);
 
         if (entry is null) return NoContent();
 
@@ -159,12 +160,15 @@ public class TimeEntriesController : ControllerBase
 
         if (task is null) return NotFound();
 
+        // Manual entries must have EndTime set (not null) to avoid conflicting
+        // with the partial unique index on EndTime IS NULL (active timer guard)
+        var now = DateTime.UtcNow;
         var entry = new TimeEntry
         {
             TaskId = taskId,
             UserId = userId,
             StartTime = null,
-            EndTime = null,
+            EndTime = now,
             DurationSeconds = request.DurationMinutes * 60,
             Notes = request.Notes
         };
