@@ -1,3 +1,4 @@
+@using MudBlazor.Utilities
 @inject BoardService BoardService
 @inject ColumnService ColumnService
 @inject ISnackbar Snackbar
@@ -12,14 +13,26 @@
         <MudTextField @bind-Value="_boardName" Label="Board Name" Variant="Variant.Outlined"
                       Required="true" RequiredError="Board name is required" Class="mb-4" />
         <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.5; margin-bottom: 8px;">Color</MudText>
-        <div class="d-flex flex-wrap gap-2 mb-4">
+        <div class="d-flex flex-wrap align-center gap-2 mb-4">
             @foreach (var color in _colorOptions)
             {
-                <div @onclick="() => _boardColor = color"
-                     style="width: 32px; height: 32px; border-radius: 8px; background: @color; cursor: pointer; border: 2px solid @(_boardColor == color ? "#1a1a1a" : "transparent"); transition: border-color 0.1s ease;">
+                <div @onclick="() => { _boardColor = color; _customColor = false; }"
+                     style="width: 32px; height: 32px; border-radius: 8px; background: @color; cursor: pointer; border: 2px solid @(!_customColor && _boardColor == color ? "#1a1a1a" : "transparent"); transition: border-color 0.1s ease;">
                 </div>
             }
+            <div @onclick="() => _customColor = true"
+                 style="width: 32px; height: 32px; border-radius: 8px; cursor: pointer; border: 2px solid @(_customColor ? "#1a1a1a" : "rgba(0,0,0,0.15)"); display: flex; align-items: center; justify-content: center; background: @(_customColor && !string.IsNullOrEmpty(_boardColor) ? _boardColor : "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)"); transition: border-color 0.1s ease;"
+                 title="Custom color">
+            </div>
         </div>
+        @if (_customColor)
+        {
+            <MudColorPicker @bind-Value="_pickerColor" Style="margin-bottom: 16px;"
+                            ColorPickerMode="ColorPickerMode.HEX"
+                            DisableAlpha="true"
+                            DisableToolbar="false"
+                            DisablePreview="false" />
+        }
 
         <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.5; margin-bottom: 8px;">Icon</MudText>
         <div class="d-flex flex-wrap gap-1 mb-4" style="max-height: 180px; overflow-y: auto; padding: 4px;">
@@ -98,6 +111,13 @@
     private List<ColumnEditModel> _columns = [];
     private string? _columnError;
     private bool _saving;
+    private bool _customColor;
+
+    private MudColor _pickerColor
+    {
+        get => new MudColor(_boardColor ?? "#6366f1");
+        set => _boardColor = value.ToString(MudColorOutputFormats.Hex);
+    }
 
     private static readonly string[] _colorOptions =
     [
