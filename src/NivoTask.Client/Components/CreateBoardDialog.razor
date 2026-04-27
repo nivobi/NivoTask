@@ -1,0 +1,62 @@
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">New Board</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_name" Label="Board Name" Variant="Variant.Outlined"
+                      Required="true" RequiredError="Board name is required" Class="mb-4" />
+        <MudTextField @bind-Value="_color" Label="Board Color" Variant="Variant.Outlined"
+                      Placeholder="#594AE2" HelperText="Hex color (e.g. #FF5722)" Class="mb-4" />
+        <MudTextField @bind-Value="_icon" Label="Icon Name" Variant="Variant.Outlined"
+                      HelperText="Material icon name (e.g. folder, work, code)" Class="mb-4" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="Submit" Disabled="@(string.IsNullOrWhiteSpace(_name) || _saving)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Create Board
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Inject] private BoardService BoardService { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
+
+    private string _name = string.Empty;
+    private string? _color;
+    private string? _icon;
+    private bool _saving;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_name) || _saving) return;
+
+        _saving = true;
+        try
+        {
+            var board = await BoardService.CreateBoardAsync(new CreateBoardRequest
+            {
+                Name = _name.Trim(),
+                Color = _color,
+                Icon = _icon?.Trim()
+            });
+            MudDialog.Close(DialogResult.Ok(board));
+        }
+        catch
+        {
+            Snackbar.Add("Could not create board. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
