@@ -1,0 +1,8 @@
+.task-card {
+    cursor: grab;
+    transition: box-shadow 0.2s ease;
+}
+
+.task-card:hover {
+    box-shadow: var(--mud-elevation-3);
+}
