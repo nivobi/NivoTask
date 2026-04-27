@@ -1,35 +1,31 @@
 @using NivoTask.Client.Models
 
-<MudCard Elevation="0" Class="task-card pa-3 mb-2" @onclick="HandleClick">
-    <MudCardContent Class="pa-0">
-        <MudText Typo="Typo.body2" Style="font-weight: 500; line-height: 1.45;">@Item.Title</MudText>
-        @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
-        {
-            <div class="d-flex align-center gap-3 mt-2">
-                @if (Item.SubTaskCount > 0)
-                {
-                    <div class="d-flex align-center gap-1">
-                        <MudIcon Icon="@Icons.Material.Outlined.Checklist" Size="Size.Small"
-                                 Style="font-size: 13px; opacity: 0.3;" />
-                        <MudText Typo="Typo.body2" Style="opacity: 0.35; font-size: 0.6875rem;">
-                            @Item.SubTaskProgress
-                        </MudText>
-                    </div>
-                }
-                @if (Item.TotalTimeSeconds > 0)
-                {
-                    <div class="d-flex align-center gap-1">
-                        <MudIcon Icon="@Icons.Material.Outlined.Schedule" Size="Size.Small"
-                                 Style="font-size: 13px; opacity: 0.3;" />
-                        <MudText Typo="Typo.body2" Style="opacity: 0.35; font-size: 0.6875rem; font-variant-numeric: tabular-nums;">
-                            @Item.FormattedTime
-                        </MudText>
-                    </div>
-                }
-            </div>
-        }
-    </MudCardContent>
-</MudCard>
+<div class="task-card" @onclick="HandleClick">
+    <span class="task-card-title">@Item.Title</span>
+    @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
+    {
+        <div class="task-card-meta">
+            @if (Item.SubTaskCount > 0)
+            {
+                <div class="task-card-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                    </svg>
+                    <span>@Item.SubTaskProgress</span>
+                </div>
+            }
+            @if (Item.TotalTimeSeconds > 0)
+            {
+                <div class="task-card-badge">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    <span>@Item.FormattedTime</span>
+                </div>
+            }
+        </div>
+    }
+</div>
 
 @code {
     [Parameter] public BoardTaskItem Item { get; set; } = null!;

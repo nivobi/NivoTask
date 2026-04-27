@@ -8,16 +8,18 @@
 
 @if (_loading)
 {
-    <div class="d-flex flex-row pa-2" style="overflow-x: auto;">
+    <div class="d-flex flex-row" style="gap: 12px; padding: 4px; overflow-x: auto;">
         @for (int i = 0; i < 3; i++)
         {
-            <MudPaper Class="ma-2 pa-2" Style="min-width: 300px; max-width: 300px;">
-                <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="24px" Class="mb-3" />
+            <div style="min-width: 280px; max-width: 280px; background: #ebecf0; border-radius: 12px; padding: 14px;">
+                <MudSkeleton SkeletonType="SkeletonType.Text" Width="50%" Height="18px" Class="mb-3"
+                             Style="border-radius: 6px;" />
                 @for (int j = 0; j < 3; j++)
                 {
-                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="60px" Class="mb-2" />
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="52px" Class="mb-2"
+                                 Style="border-radius: 8px;" />
                 }
-            </MudPaper>
+            </div>
         }
     </div>
 }
@@ -28,10 +30,13 @@ else if (_board is null)
 else if (_columns.Count == 0)
 {
     <div class="d-flex flex-column justify-center align-center" style="height: 60vh;">
-        <MudIcon Icon="@Icons.Material.Filled.ViewColumn" Size="Size.Large" Class="mb-4"
-                 Style="font-size: 64px; color: var(--mud-palette-text-secondary);" />
-        <MudText Typo="Typo.body1" Align="Align.Center">
-            This board has no columns yet. Open Board Settings to add your first column.
+        <MudIcon Icon="@Icons.Material.Outlined.ViewWeek" Size="Size.Large" Class="mb-4"
+                 Style="font-size: 56px; opacity: 0.12;" />
+        <MudText Typo="Typo.body1" Style="opacity: 0.4; font-weight: 500;">
+            No columns yet
+        </MudText>
+        <MudText Typo="Typo.body2" Style="opacity: 0.25;" Class="mt-1">
+            Open Board Settings to add your first column
         </MudText>
     </div>
 }
@@ -43,23 +48,30 @@ else
                       ItemsSelector="@((item, zone) => item.ColumnIdentifier == zone)"
                       ItemDropped="OnTaskDropped"
                       Class="d-flex flex-row flex-grow-1"
-                      Style="overflow-x: auto;">
+                      Style="overflow-x: auto; gap: 12px; padding: 4px; align-items: flex-start;">
         <ChildContent>
             @foreach (var column in _columns)
             {
-                <MudPaper Class="ma-2 pa-2 d-flex flex-column" Style="min-width: 300px; max-width: 300px;" Elevation="0">
-                    <MudText Typo="Typo.subtitle1" Class="mb-2">
-                        @column.Name (@_taskItems.Count(t => t.ColumnIdentifier == column.Id.ToString()))
-                    </MudText>
+                <div style="min-width: 280px; max-width: 280px; background: #ebecf0; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; flex-shrink: 0;">
+                    <div class="d-flex align-center justify-space-between" style="padding: 4px 6px 8px;">
+                        <span style="font-weight: 700; font-size: 0.8125rem; color: #44546f; letter-spacing: 0;">
+                            @column.Name
+                        </span>
+                        <span style="font-size: 0.6875rem; color: #44546f; opacity: 0.5; font-weight: 500;">
+                            @_taskItems.Count(t => t.ColumnIdentifier == column.Id.ToString())
+                        </span>
+                    </div>
                     <MudDropZone T="BoardTaskItem"
                                  Identifier="@column.Id.ToString()"
                                  AllowReorder="true"
                                  CanDropClass="mud-border-info"
-                                 Class="d-flex flex-column flex-grow-1 pa-1"
-                                 Style="min-height: 200px; overflow-y: auto;">
+                                 Class="d-flex flex-column flex-grow-1"
+                                 Style="min-height: 24px; overflow-y: auto; gap: 8px; padding: 2px;">
                     </MudDropZone>
-                    <QuickAddTask BoardId="BoardId" ColumnId="@column.Id" OnTaskCreated="HandleTaskCreated" />
-                </MudPaper>
+                    <div style="margin-top: 8px;">
+                        <QuickAddTask BoardId="BoardId" ColumnId="@column.Id" OnTaskCreated="HandleTaskCreated" />
+                    </div>
+                </div>
             }
         </ChildContent>
         <ItemRenderer>

@@ -1,0 +1,18 @@
+.quick-add-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #44546f;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background-color 0.1s ease, color 0.1s ease;
+    user-select: none;
+}
+
+.quick-add-trigger:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #172b4d;
+}

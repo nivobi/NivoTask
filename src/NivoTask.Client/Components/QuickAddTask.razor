@@ -1,13 +1,36 @@
 @using NivoTask.Client.Models
 @using NivoTask.Shared.Dtos.Tasks
 
-<div class="d-flex align-center gap-1 mt-2">
-    <MudTextField @bind-Value="_title" Placeholder="Add a task..." Variant="Variant.Text"
-                  Immediate="true" Class="flex-grow-1"
-                  OnKeyDown="HandleKeyDown" Disabled="_creating" />
-    <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" Size="Size.Small"
-                   OnClick="HandleSubmit" Disabled="@(string.IsNullOrWhiteSpace(_title) || _creating)" />
-</div>
+@if (_showInput)
+{
+    <div style="background: #fff; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 1px rgba(9,30,66,0.13), 0 0 1px rgba(9,30,66,0.12);">
+        <MudTextField @bind-Value="_title" Placeholder="Enter a title..."
+                      Variant="Variant.Text" Immediate="true"
+                      OnKeyDown="HandleKeyDown" Disabled="_creating"
+                      AutoFocus="true" Style="font-size: 0.875rem;" />
+        <div class="d-flex align-center gap-2 mt-1">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                       OnClick="HandleSubmit"
+                       Disabled="@(string.IsNullOrWhiteSpace(_title) || _creating)"
+                       Style="text-transform: none; box-shadow: none; font-weight: 500;">
+                Add card
+            </MudButton>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                           OnClick="() => { _showInput = false; _title = string.Empty; }"
+                           Style="opacity: 0.5;" />
+        </div>
+    </div>
+}
+else
+{
+    <div class="quick-add-trigger" @onclick="() => _showInput = true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5;">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        <span>Add a card</span>
+    </div>
+}
 
 @code {
     [Parameter] public int BoardId { get; set; }
@@ -19,12 +42,18 @@
 
     private string _title = string.Empty;
     private bool _creating;
+    private bool _showInput;
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_title))
         {
             await HandleSubmit();
+        }
+        else if (e.Key == "Escape")
+        {
+            _showInput = false;
+            _title = string.Empty;
         }
     }
 
@@ -38,6 +67,7 @@
             var task = await TaskService.CreateTaskAsync(BoardId, ColumnId,
                 new CreateTaskRequest { Title = _title.Trim() });
             _title = string.Empty;
+            _showInput = false;
             if (task is not null)
             {
                 await OnTaskCreated.InvokeAsync(task);

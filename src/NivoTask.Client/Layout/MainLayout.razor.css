@@ -37,6 +37,11 @@
     background: rgba(0, 0, 0, 0.2);
 }
 
+/* Force main content top padding below fixed app bar */
+::deep .mud-main-content {
+    padding-top: 70px !important;
+}
+
 /* AppBar text field cleanup */
 ::deep .mud-input-underline::before,
 ::deep .mud-input-underline::after {
