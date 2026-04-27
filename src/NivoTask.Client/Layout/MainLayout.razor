@@ -16,6 +16,7 @@
         <MudText Typo="Typo.h6" Class="ml-3">
             @(_currentBoardName ?? "NivoTask")
         </MudText>
+        <TimerChip OnNavigateToTask="OpenDetailPanel" />
         <MudSpacer />
         @if (_currentBoardId > 0)
         {
@@ -47,6 +48,17 @@
             @Body
         </CascadingValue>
     </MudMainContent>
+    <MudDrawer @bind-Open="_detailPanelOpen"
+               Anchor="Anchor.End"
+               Variant="DrawerVariant.Temporary"
+               Width="500px"
+               Elevation="2"
+               ClipMode="DrawerClipMode.Always">
+        @if (_selectedTaskId > 0)
+        {
+            <TaskDetailPanel TaskId="_selectedTaskId" OnClose="CloseDetailPanel" />
+        }
+    </MudDrawer>
 </MudLayout>
 
 @code {
@@ -54,10 +66,15 @@
     [Inject] private NavigationManager Navigation { get; set; } = null!;
     [Inject] private BoardService BoardService { get; set; } = null!;
     [Inject] private IDialogService DialogService { get; set; } = null!;
+    [Inject] private TimerStateService TimerState { get; set; } = null!;
+    [Inject] private TimeEntryService TimeEntryService { get; set; } = null!;
 
     private bool _drawerOpen = true;
     private string? _currentBoardName;
     private int _currentBoardId;
+    private bool _detailPanelOpen;
+    private int _selectedTaskId;
+    private bool _timerLoaded;
 
     public void SetBoardContext(string boardName, int boardId)
     {
@@ -124,5 +141,37 @@
     {
         await AccountManagement.LogoutAsync();
         Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    public void OpenDetailPanel(int taskId)
+    {
+        _selectedTaskId = taskId;
+        _detailPanelOpen = true;
+        StateHasChanged();
+    }
+
+    public void CloseDetailPanel()
+    {
+        _detailPanelOpen = false;
+        _selectedTaskId = 0;
+        StateHasChanged();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_timerLoaded)
+        {
+            _timerLoaded = true;
+            try
+            {
+                var active = await TimeEntryService.GetActiveTimerAsync();
+                if (active is not null)
+                {
+                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                    StateHasChanged();
+                }
+            }
+            catch { }
+        }
     }
 }
