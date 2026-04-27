@@ -139,6 +139,13 @@ public class ColumnsController : ControllerBase
             return BadRequest("Cannot delete the last column on a board");
         }
 
+        // Block delete if column has tasks (D-14)
+        var hasTasks = await _db.Tasks.AnyAsync(t => t.ColumnId == columnId);
+        if (hasTasks)
+        {
+            return BadRequest("Move tasks to another column first");
+        }
+
         _db.BoardColumns.Remove(column);
         await _db.SaveChangesAsync();
         return NoContent();

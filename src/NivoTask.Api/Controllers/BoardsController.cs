@@ -5,6 +5,7 @@ using NivoTask.Api.Data;
 using NivoTask.Api.Models;
 using NivoTask.Shared.Dtos.Boards;
 using NivoTask.Shared.Dtos.Columns;
+using NivoTask.Shared.Dtos.Tasks;
 
 namespace NivoTask.Api.Controllers;
 
@@ -51,6 +52,51 @@ public class BoardsController : ControllerBase
         if (board is null) return NotFound();
 
         return Ok(ToBoardResponse(board));
+    }
+
+    [HttpGet("{boardId}/tasks")]
+    public async Task<ActionResult<List<BoardTaskResponse>>> GetBoardTasks(int boardId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var board = await _db.Boards
+            .Where(b => b.Id == boardId && b.UserId == userId)
+            .FirstOrDefaultAsync();
+
+        if (board is null) return NotFound();
+
+        var columnIds = await _db.BoardColumns
+            .Where(c => c.BoardId == boardId)
+            .Select(c => c.Id)
+            .ToListAsync();
+
+        var headTasks = await _db.Tasks
+            .Where(t => columnIds.Contains(t.ColumnId) && t.ParentTaskId == null)
+            .OrderBy(t => t.SortOrder)
+            .Select(t => new BoardTaskResponse
+            {
+                Id = t.Id,
+                Title = t.Title,
+                SortOrder = t.SortOrder,
+                ColumnId = t.ColumnId,
+                SubTaskCount = t.SubTasks.Count,
+                CompletedSubTaskCount = t.SubTasks.Count(s => s.Column.IsDone)
+            })
+            .ToListAsync();
+
+        // Compute time rollup per task (same pattern as TasksController.GetTask)
+        // Include: stopped timers (EndTime != null) AND manual entries (StartTime == null)
+        // Exclude: running timers (StartTime != null && EndTime == null)
+        foreach (var task in headTasks)
+        {
+            task.TotalTimeSeconds = await _db.TimeEntries
+                .Where(te => (te.TaskId == task.Id || te.Task.ParentTaskId == task.Id)
+                          && (te.EndTime != null || te.StartTime == null)
+                          && te.DurationSeconds > 0)
+                .SumAsync(te => te.DurationSeconds);
+        }
+
+        return Ok(headTasks);
     }
 
     [HttpPost]
