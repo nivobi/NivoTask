@@ -52,6 +52,8 @@
 @code {
     [Inject] private IAccountManagement AccountManagement { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
+    [Inject] private BoardService BoardService { get; set; } = null!;
+    [Inject] private IDialogService DialogService { get; set; } = null!;
 
     private bool _drawerOpen = true;
     private string? _currentBoardName;
@@ -73,8 +75,49 @@
 
     private async Task OnSettingsClicked()
     {
-        // Board settings dialog wired in Plan 05
-        await Task.CompletedTask;
+        if (_currentBoardId <= 0) return;
+
+        // Fetch current board data for the dialog
+        var board = await BoardService.GetBoardAsync(_currentBoardId);
+        if (board is null) return;
+
+        // Build column edit models with task counts from board tasks
+        var tasks = await BoardService.GetBoardTasksAsync(_currentBoardId);
+        var columnModels = board.Columns.Select(c => new BoardSettingsDialog.ColumnEditModel
+        {
+            Id = c.Id,
+            Name = c.Name,
+            IsDone = c.IsDone,
+            TaskCount = tasks.Count(t => t.ColumnIdentifier == c.Id.ToString()),
+            IsNew = false
+        }).ToList();
+
+        var parameters = new DialogParameters<BoardSettingsDialog>
+        {
+            { x => x.BoardId, board.Id },
+            { x => x.BoardName, board.Name },
+            { x => x.BoardColor, board.Color },
+            { x => x.BoardIcon, board.Icon },
+            { x => x.Columns, columnModels }
+        };
+
+        var dialog = await DialogService.ShowAsync<BoardSettingsDialog>("Board Settings",
+            parameters, new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled)
+        {
+            if (result.Data is string s && s == "deleted")
+            {
+                // Board was deleted, navigate to board list
+                _currentBoardName = null;
+                _currentBoardId = 0;
+                StateHasChanged();
+                return;
+            }
+
+            // Board was updated, reload current page
+            Navigation.NavigateTo($"/boards/{_currentBoardId}", forceLoad: true);
+        }
     }
 
     private async Task HandleLogout()
