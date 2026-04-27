@@ -2,12 +2,37 @@
 
 <div class="task-card" @onclick="HandleClick">
     <span class="task-card-title">@Item.Title</span>
+
+    @if (Item.SubTasks.Count > 0)
+    {
+        <div class="task-card-checklist">
+            @foreach (var sub in Item.SubTasks.Take(5))
+            {
+                <div class="checklist-item @(sub.IsDone ? "done" : "")">
+                    <div class="check-box @(sub.IsDone ? "checked" : "")">
+                        @if (sub.IsDone)
+                        {
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                        }
+                    </div>
+                    <span class="checklist-title">@sub.Title</span>
+                </div>
+            }
+            @if (Item.SubTasks.Count > 5)
+            {
+                <span class="checklist-more">+@(Item.SubTasks.Count - 5) more</span>
+            }
+        </div>
+    }
+
     @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
     {
         <div class="task-card-meta">
             @if (Item.SubTaskCount > 0)
             {
-                <div class="task-card-badge">
+                <div class="task-card-badge @(Item.CompletedSubTaskCount == Item.SubTaskCount && Item.SubTaskCount > 0 ? "complete" : "")">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
                     </svg>

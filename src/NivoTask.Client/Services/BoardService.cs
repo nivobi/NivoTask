@@ -29,7 +29,8 @@ public class BoardService
             ColumnIdentifier = d.ColumnId.ToString(),
             SubTaskCount = d.SubTaskCount,
             CompletedSubTaskCount = d.CompletedSubTaskCount,
-            TotalTimeSeconds = d.TotalTimeSeconds
+            TotalTimeSeconds = d.TotalTimeSeconds,
+            SubTasks = d.SubTasks
         }).ToList();
     }
 
