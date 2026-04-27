@@ -1,0 +1,235 @@
+@inject BoardService BoardService
+@inject ColumnService ColumnService
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+@inject NavigationManager Navigation
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Board Settings</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudTextField @bind-Value="_boardName" Label="Board Name" Variant="Variant.Outlined"
+                      Required="true" RequiredError="Board name is required" Class="mb-4" />
+        <MudTextField @bind-Value="_boardColor" Label="Board Color" Variant="Variant.Outlined"
+                      Placeholder="#594AE2" HelperText="Hex color (e.g. #FF5722)" Class="mb-4" />
+        <MudTextField @bind-Value="_boardIcon" Label="Icon Name" Variant="Variant.Outlined"
+                      HelperText="Material icon name (e.g. folder, work, code)" Class="mb-4" />
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.subtitle1" Class="mb-2">Columns</MudText>
+
+        @foreach (var (col, index) in _columns.Select((c, i) => (c, i)))
+        {
+            <MudPaper Class="pa-2 mb-2 d-flex align-center" Elevation="0" Outlined="true">
+                <MudTextField @bind-Value="col.Name" Variant="Variant.Text" Class="flex-grow-1"
+                              Immediate="true" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
+                               Disabled="@(index == 0)"
+                               OnClick="@(() => MoveColumn(index, -1))" />
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowDownward" Size="Size.Small"
+                               Disabled="@(index == _columns.Count - 1)"
+                               OnClick="@(() => MoveColumn(index, 1))" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                               Disabled="@(_columns.Count <= 1)"
+                               OnClick="@(() => DeleteColumn(col))" />
+            </MudPaper>
+        }
+
+        @if (!string.IsNullOrEmpty(_columnError))
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-2">@_columnError</MudAlert>
+        }
+
+        <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add"
+                   OnClick="AddColumn" Class="mb-4">
+            Add Column
+        </MudButton>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.caption" Color="Color.Error" Class="mb-2">DANGER ZONE</MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteBoard">
+            Delete Board
+        </MudButton>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled"
+                   OnClick="SaveChanges" Disabled="@(string.IsNullOrWhiteSpace(_boardName) || _saving)">
+            @if (_saving)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Save Changes
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int BoardId { get; set; }
+    [Parameter] public string BoardName { get; set; } = string.Empty;
+    [Parameter] public string? BoardColor { get; set; }
+    [Parameter] public string? BoardIcon { get; set; }
+    [Parameter] public List<ColumnEditModel> Columns { get; set; } = [];
+
+    private string _boardName = string.Empty;
+    private string? _boardColor;
+    private string? _boardIcon;
+    private List<ColumnEditModel> _columns = [];
+    private string? _columnError;
+    private bool _saving;
+
+    protected override void OnInitialized()
+    {
+        _boardName = BoardName;
+        _boardColor = BoardColor;
+        _boardIcon = BoardIcon;
+        _columns = Columns.Select(c => new ColumnEditModel
+        {
+            Id = c.Id, Name = c.Name, IsDone = c.IsDone, TaskCount = c.TaskCount, IsNew = false
+        }).ToList();
+    }
+
+    private void MoveColumn(int index, int direction)
+    {
+        var newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= _columns.Count) return;
+        (_columns[index], _columns[newIndex]) = (_columns[newIndex], _columns[index]);
+    }
+
+    private void AddColumn()
+    {
+        _columns.Add(new ColumnEditModel { Name = "New Column", IsNew = true });
+    }
+
+    private async Task DeleteColumn(ColumnEditModel col)
+    {
+        _columnError = null;
+
+        if (_columns.Count <= 1)
+        {
+            _columnError = "Cannot delete the last column on a board";
+            return;
+        }
+
+        if (!col.IsNew && col.TaskCount > 0)
+        {
+            _columnError = $"Move all tasks to another column before deleting \"{col.Name}\".";
+            return;
+        }
+
+        if (!col.IsNew)
+        {
+            try
+            {
+                await ColumnService.DeleteColumnAsync(BoardId, col.Id);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.BadRequest)
+            {
+                _columnError = $"Move all tasks to another column before deleting \"{col.Name}\".";
+                return;
+            }
+            catch
+            {
+                Snackbar.Add("Could not delete column. Please try again.", Severity.Error);
+                return;
+            }
+        }
+
+        _columns.Remove(col);
+    }
+
+    private async Task SaveChanges()
+    {
+        if (string.IsNullOrWhiteSpace(_boardName) || _saving) return;
+
+        _saving = true;
+        _columnError = null;
+
+        try
+        {
+            // Update board properties
+            await BoardService.UpdateBoardAsync(BoardId, new UpdateBoardRequest
+            {
+                Name = _boardName.Trim(),
+                Color = _boardColor,
+                Icon = _boardIcon?.Trim()
+            });
+
+            // Create any new columns
+            foreach (var col in _columns.Where(c => c.IsNew))
+            {
+                if (!string.IsNullOrWhiteSpace(col.Name))
+                {
+                    var created = await ColumnService.CreateColumnAsync(BoardId,
+                        new CreateColumnRequest { Name = col.Name.Trim() });
+                    if (created is not null) col.Id = created.Id;
+                    col.IsNew = false;
+                }
+            }
+
+            // Update existing column names
+            foreach (var col in _columns.Where(c => !c.IsNew && c.Id > 0))
+            {
+                await ColumnService.UpdateColumnAsync(BoardId, col.Id,
+                    new UpdateColumnRequest { Name = col.Name.Trim(), IsDone = col.IsDone });
+            }
+
+            // Reorder columns (BOARD-05)
+            var orderedIds = _columns.Where(c => c.Id > 0).Select(c => c.Id).ToList();
+            if (orderedIds.Count > 0)
+            {
+                await ColumnService.ReorderColumnsAsync(BoardId,
+                    new ReorderColumnsRequest { ColumnIds = orderedIds });
+            }
+
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch
+        {
+            Snackbar.Add("Could not save changes. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ConfirmDeleteBoard()
+    {
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Delete Board",
+            $"Are you sure you want to delete \"{_boardName}\"? All tasks and time entries will be permanently lost.",
+            yesText: "Delete Board",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                await BoardService.DeleteBoardAsync(BoardId);
+                Snackbar.Add("Board deleted.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok("deleted"));
+                Navigation.NavigateTo("/boards");
+            }
+            catch
+            {
+                Snackbar.Add("Could not delete board. Please try again.", Severity.Error);
+            }
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public class ColumnEditModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public bool IsDone { get; set; }
+        public int TaskCount { get; set; }
+        public bool IsNew { get; set; }
+    }
+}
