@@ -1,5 +1,64 @@
 @page "/boards"
 @attribute [Authorize]
+@inject BoardService BoardService
+@inject LocalStorageService LocalStorage
+@inject NavigationManager Navigation
 
-<MudText Typo="Typo.h4" Class="mb-4">Boards</MudText>
-<MudText Typo="Typo.body1">Board management coming in Phase 2.</MudText>
+@if (_loading)
+{
+    <div class="d-flex justify-center align-center" style="height: 60vh;">
+        <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+    </div>
+}
+else if (_boards is not null && _boards.Count == 0)
+{
+    <div class="d-flex flex-column justify-center align-center" style="height: 60vh;">
+        <MudIcon Icon="@Icons.Material.Filled.Dashboard" Size="Size.Large" Class="mb-4" Style="font-size: 64px; color: var(--mud-palette-text-secondary);" />
+        <MudText Typo="Typo.h6" Class="mb-2">No boards yet</MudText>
+        <MudText Typo="Typo.body1" Class="mb-4" Align="Align.Center">Create a board to start tracking your tasks and time.</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   StartIcon="@Icons.Material.Filled.Add" OnClick="CreateFirstBoard">
+            Create Your First Board
+        </MudButton>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private List<BoardSummaryResponse>? _boards;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _boards = await BoardService.GetBoardsAsync();
+
+            if (_boards.Count > 0)
+            {
+                // Try to redirect to last-used board (D-03)
+                var lastBoardIdStr = await LocalStorage.GetAsync("lastBoardId");
+                if (int.TryParse(lastBoardIdStr, out var lastBoardId)
+                    && _boards.Any(b => b.Id == lastBoardId))
+                {
+                    Navigation.NavigateTo($"/boards/{lastBoardId}");
+                    return;
+                }
+
+                // Fallback: navigate to first board
+                Navigation.NavigateTo($"/boards/{_boards[0].Id}");
+                return;
+            }
+        }
+        catch
+        {
+            _boards = [];
+        }
+
+        _loading = false;
+    }
+
+    private void CreateFirstBoard()
+    {
+        // CreateBoardDialog wired in Plan 05
+    }
+}
