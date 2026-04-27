@@ -227,13 +227,26 @@
             var response = await TimeEntryService.StartTimerAsync(SubTask.Id);
             if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
             {
-                var activeTimer = await response.Content.ReadFromJsonAsync<ActiveTimerResponse>();
-                if (activeTimer is null) return;
+                // Get the ACTUAL active timer from the server (not from 409 body which may fail to deserialize)
+                var currentActive = await TimeEntryService.GetActiveTimerAsync();
+                if (currentActive is null)
+                {
+                    // No active timer found — stale state, just retry start
+                    TimerState.Clear();
+                    var retry = await TimeEntryService.StartTimerAsync(SubTask.Id);
+                    if (retry.IsSuccessStatusCode)
+                    {
+                        var started = await TimeEntryService.GetActiveTimerAsync();
+                        if (started is not null)
+                            TimerState.SetActive(started.TaskId, started.TaskTitle, started.EntryId, started.StartTime);
+                    }
+                    return;
+                }
 
                 var parameters = new DialogParameters<TimerSwitchDialog>
                 {
-                    { x => x.ActiveTaskTitle, activeTimer.TaskTitle },
-                    { x => x.ActiveElapsedSeconds, TimerState.ElapsedSeconds },
+                    { x => x.ActiveTaskTitle, currentActive.TaskTitle },
+                    { x => x.ActiveElapsedSeconds, currentActive.ElapsedSeconds },
                     { x => x.NewTaskTitle, SubTask.Title }
                 };
                 var dialog = await DialogService.ShowAsync<TimerSwitchDialog>(
@@ -248,7 +261,7 @@
                 {
                     try
                     {
-                        await TimeEntryService.StopTimerAsync(activeTimer.TaskId);
+                        await TimeEntryService.StopTimerAsync(currentActive.TaskId);
                         var startResponse = await TimeEntryService.StartTimerAsync(SubTask.Id);
                         startResponse.EnsureSuccessStatusCode();
                         var newTimer = await TimeEntryService.GetActiveTimerAsync();
@@ -259,6 +272,16 @@
                     catch
                     {
                         Snackbar.Add("Could not switch timer.", Severity.Error);
+                        // Refresh timer state from server
+                        try
+                        {
+                            var fresh = await TimeEntryService.GetActiveTimerAsync();
+                            if (fresh is not null)
+                                TimerState.SetActive(fresh.TaskId, fresh.TaskTitle, fresh.EntryId, fresh.StartTime);
+                            else
+                                TimerState.Clear();
+                        }
+                        catch { }
                     }
                 }
             }
