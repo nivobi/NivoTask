@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 using NivoTask.Client;
 using NivoTask.Client.Identity;
+using NivoTask.Client.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
@@ -33,5 +34,11 @@ builder.Services.AddScoped(sp =>
 
 // MudBlazor
 builder.Services.AddMudServices();
+
+// API services
+builder.Services.AddScoped<BoardService>();
+builder.Services.AddScoped<TaskService>();
+builder.Services.AddScoped<ColumnService>();
+builder.Services.AddScoped<LocalStorageService>();
 
 await builder.Build().RunAsync();
