@@ -40,6 +40,16 @@ public class TaskService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<bool> ToggleDoneAsync(int taskId)
+    {
+        var response = await _http.PatchAsync($"api/tasks/{taskId}/done", null);
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<ToggleDoneResult>();
+        return result?.IsDone ?? false;
+    }
+
+    private record ToggleDoneResult(bool IsDone);
+
     public async Task DeleteTaskAsync(int taskId)
     {
         var response = await _http.DeleteAsync($"api/tasks/{taskId}");

@@ -92,6 +92,23 @@ public class TasksController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("tasks/{taskId}/done")]
+    public async Task<IActionResult> ToggleTaskDone(int taskId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var task = await _db.Tasks
+            .Include(t => t.Column)
+            .ThenInclude(c => c.Board)
+            .FirstOrDefaultAsync(t => t.Id == taskId && t.Column.Board.UserId == userId);
+
+        if (task is null) return NotFound();
+
+        task.IsDone = !task.IsDone;
+        await _db.SaveChangesAsync();
+        return Ok(new { task.IsDone });
+    }
+
     [HttpDelete("tasks/{taskId}")]
     public async Task<IActionResult> DeleteTask(int taskId)
     {

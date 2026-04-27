@@ -9,6 +9,7 @@ public class TaskItem
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public int ColumnId { get; set; }
     public BoardColumn Column { get; set; } = null!;
+    public bool IsDone { get; set; }
     public int? ParentTaskId { get; set; }
     public TaskItem? ParentTask { get; set; }
     public List<TaskItem> SubTasks { get; set; } = [];

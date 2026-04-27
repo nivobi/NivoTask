@@ -82,12 +82,12 @@ public class BoardsController : ControllerBase
                 SortOrder = t.SortOrder,
                 ColumnId = t.ColumnId,
                 SubTaskCount = t.SubTasks.Count,
-                CompletedSubTaskCount = t.SubTasks.Count(s => s.Column.IsDone),
+                CompletedSubTaskCount = t.SubTasks.Count(s => s.IsDone),
                 SubTasks = t.SubTasks.OrderBy(s => s.SortOrder).Select(s => new BoardSubTaskInfo
                 {
                     Id = s.Id,
                     Title = s.Title,
-                    IsDone = s.Column.IsDone
+                    IsDone = s.IsDone
                 }).ToList()
             })
             .ToListAsync();
