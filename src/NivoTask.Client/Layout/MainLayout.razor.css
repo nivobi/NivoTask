@@ -6,3 +6,8 @@
     flex-grow: 1;
     align-items: flex-start;
 }
+
+/* Fix MudBlazor right drawer visibility bug (#10175) */
+::deep .mud-drawer--closed.mud-drawer-anchor-end {
+    display: none;
+}

@@ -1,0 +1,231 @@
+@using NivoTask.Shared.Dtos.TimeEntries
+@implements IDisposable
+@inject TaskService TaskService
+@inject TimeEntryService TimeEntryService
+@inject TimerStateService TimerState
+@inject ISnackbar Snackbar
+
+<div class="pa-4">
+    <!-- Close button -->
+    <div class="d-flex justify-end">
+        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="OnClose" />
+    </div>
+
+    @if (_loading)
+    {
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="60%" Height="28px" Class="mb-3" />
+        @for (int i = 0; i < 3; i++)
+        {
+            <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="48px" Class="mb-2" />
+        }
+    }
+    else if (_task is null)
+    {
+        <MudText Typo="Typo.body1" Color="Color.Error">
+            Could not load task details. Check your connection and try again.
+        </MudText>
+    }
+    else
+    {
+        <!-- Header: title + total time (D-14) -->
+        <div class="d-flex justify-space-between align-start mb-2">
+            <div class="flex-grow-1 mr-4">
+                @if (_editingTitle)
+                {
+                    <MudTextField T="string" @bind-Value="_editTitle" Variant="Variant.Text"
+                                  Typo="Typo.h6" AutoFocus="true"
+                                  OnKeyDown="HandleTitleKeyDown" OnBlur="SaveTitle" />
+                }
+                else
+                {
+                    <MudText Typo="Typo.h6" @onclick="StartEditingTitle" Style="cursor: text;">
+                        @_task.Title
+                    </MudText>
+                }
+            </div>
+            <MudText Typo="Typo.h5" Style="white-space: nowrap; opacity: 0.87;">
+                @FormatTime(_task.TotalTimeSeconds)
+            </MudText>
+        </div>
+
+        <!-- Description -->
+        @if (_editingDescription)
+        {
+            <MudTextField T="string" @bind-Value="_editDescription" Variant="Variant.Text"
+                          Lines="3" Placeholder="Add a description..."
+                          OnBlur="SaveDescription" AutoFocus="true" Class="mb-4" />
+        }
+        else
+        {
+            <MudText Typo="Typo.body1" Style="opacity: 0.6; cursor: text;" Class="mb-4"
+                     @onclick="StartEditingDescription">
+                @(string.IsNullOrEmpty(_task.Description) ? "Add a description..." : _task.Description)
+            </MudText>
+        }
+
+        <MudDivider Class="mb-4" Style="opacity: 0.12;" />
+
+        <!-- Sub-task list -->
+        @if (_task.SubTasks.Count == 0)
+        {
+            <div class="d-flex flex-column align-center py-8">
+                <MudText Typo="Typo.body1" Align="Align.Center" Style="opacity: 0.6;">
+                    No sub-tasks yet
+                </MudText>
+                <MudText Typo="Typo.body2" Align="Align.Center" Style="opacity: 0.4;" Class="mt-1">
+                    Break this task into smaller pieces to track time on each.
+                </MudText>
+            </div>
+        }
+        else
+        {
+            @foreach (var subTask in _task.SubTasks)
+            {
+                <SubTaskRow SubTask="subTask"
+                            OnTimerAction="HandleTimerAction"
+                            OnDeleted="HandleSubTaskDeleted" />
+            }
+        }
+
+        <!-- Quick-add sub-task (D-12, IC-12) -->
+        <div class="mt-2">
+            <MudTextField T="string" @bind-Value="_newSubTaskTitle"
+                          Placeholder="Add sub-task..."
+                          Variant="Variant.Text"
+                          OnKeyDown="HandleAddSubTaskKeyDown"
+                          Disabled="_creatingSubTask"
+                          Immediate="true" />
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public int TaskId { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private TaskDetailResponse? _task;
+    private bool _loading = true;
+    private bool _editingTitle;
+    private string _editTitle = "";
+    private bool _editingDescription;
+    private string _editDescription = "";
+    private string _newSubTaskTitle = "";
+    private bool _creatingSubTask;
+    private int _previousTaskId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (TaskId != _previousTaskId && TaskId > 0)
+        {
+            _previousTaskId = TaskId;
+            await LoadTaskDetail();
+        }
+    }
+
+    protected override void OnInitialized()
+        => TimerState.OnTimerChanged += HandleTimerChanged;
+
+    private async void HandleTimerChanged()
+        => await InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => TimerState.OnTimerChanged -= HandleTimerChanged;
+
+    private async Task LoadTaskDetail()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _task = await TaskService.GetTaskDetailAsync(TaskId);
+        }
+        catch
+        {
+            Snackbar.Add("Could not load task details. Check your connection and try again.", Severity.Error);
+            _task = null;
+        }
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void StartEditingTitle() { _editTitle = _task!.Title; _editingTitle = true; }
+
+    private async Task SaveTitle()
+    {
+        _editingTitle = false;
+        if (string.IsNullOrWhiteSpace(_editTitle) || _editTitle == _task!.Title) return;
+        var old = _task.Title;
+        _task.Title = _editTitle;
+        try { await TaskService.UpdateTaskAsync(_task.Id, new UpdateTaskRequest { Title = _editTitle, Description = _task.Description }); }
+        catch { _task.Title = old; Snackbar.Add("Could not update task.", Severity.Error); }
+    }
+
+    private async Task HandleTitleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveTitle();
+        else if (e.Key == "Escape") _editingTitle = false;
+    }
+
+    private void StartEditingDescription() { _editDescription = _task!.Description ?? ""; _editingDescription = true; }
+
+    private async Task SaveDescription()
+    {
+        _editingDescription = false;
+        var newDesc = string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription;
+        if (newDesc == _task!.Description) return;
+        var old = _task.Description;
+        _task.Description = newDesc;
+        try { await TaskService.UpdateTaskAsync(_task.Id, new UpdateTaskRequest { Title = _task.Title, Description = newDesc }); }
+        catch { _task.Description = old; Snackbar.Add("Could not update task.", Severity.Error); }
+    }
+
+    private async Task HandleAddSubTaskKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(_newSubTaskTitle) || _creatingSubTask) return;
+        _creatingSubTask = true;
+        try
+        {
+            var created = await TaskService.CreateSubTaskAsync(_task!.Id, new CreateTaskRequest { Title = _newSubTaskTitle });
+            if (created is not null)
+                _task.SubTasks.Add(created);
+            _newSubTaskTitle = "";
+        }
+        catch { Snackbar.Add("Could not create sub-task.", Severity.Error); }
+        _creatingSubTask = false;
+    }
+
+    private async Task HandleTimerAction()
+    {
+        try
+        {
+            var updated = await TaskService.GetTaskDetailAsync(TaskId);
+            if (updated is not null)
+                _task!.TotalTimeSeconds = updated.TotalTimeSeconds;
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task HandleSubTaskDeleted(int subTaskId)
+    {
+        var removed = _task?.SubTasks.FirstOrDefault(s => s.Id == subTaskId);
+        if (removed is not null)
+            _task!.SubTasks.Remove(removed);
+        StateHasChanged();
+        try
+        {
+            await TaskService.DeleteTaskAsync(subTaskId);
+            await HandleTimerAction(); // update rollup
+            Snackbar.Add("Sub-task deleted", Severity.Normal);
+        }
+        catch
+        {
+            if (removed is not null) _task!.SubTasks.Add(removed);
+            Snackbar.Add("Could not delete sub-task.", Severity.Error);
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatTime(int seconds)
+        => $"{seconds / 3600}h {(seconds % 3600) / 60}m";
+}

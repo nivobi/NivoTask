@@ -63,13 +63,14 @@ else
             }
         </ChildContent>
         <ItemRenderer>
-            <TaskCard Item="@context" />
+            <TaskCard Item="@context" OnTaskClicked="HandleTaskClicked" />
         </ItemRenderer>
     </MudDropContainer>
 }
 
 @code {
     [Parameter] public int BoardId { get; set; }
+    [CascadingParameter] private MainLayout Layout { get; set; } = null!;
 
     private MudDropContainer<BoardTaskItem>? _dropContainer;
     private BoardResponse? _board;
@@ -81,6 +82,7 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        Layout?.CloseDetailPanel();
         await LoadBoardAsync();
     }
 
@@ -184,5 +186,10 @@ else
             TotalTimeSeconds = 0
         });
         _dropContainer?.Refresh();
+    }
+
+    private void HandleTaskClicked(int taskId)
+    {
+        Layout?.OpenDetailPanel(taskId);
     }
 }
