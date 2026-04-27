@@ -1,5 +1,6 @@
 @inject BoardService BoardService
 @inject NavigationManager Navigation
+@inject IDialogService DialogService
 
 <MudNavMenu>
     @if (_boards is null)
@@ -81,7 +82,13 @@
 
     private async Task OnNewBoardClicked()
     {
-        // CreateBoardDialog wired in Plan 05
-        await Task.CompletedTask;
+        var dialog = await DialogService.ShowAsync<CreateBoardDialog>("New Board",
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled && result.Data is BoardResponse board)
+        {
+            await LoadBoardsAsync();
+            await OnBoardSelected.InvokeAsync(board.Id);
+        }
     }
 }
