@@ -1,0 +1,11 @@
+@* Stub — replaced in Task 2 *@
+
+<MudNavMenu>
+    <MudText Typo="Typo.body2" Class="pa-2">Loading boards...</MudText>
+</MudNavMenu>
+
+@code {
+    [Parameter] public bool IsExpanded { get; set; }
+    [Parameter] public int ActiveBoardId { get; set; }
+    [Parameter] public EventCallback<int> OnBoardSelected { get; set; }
+}

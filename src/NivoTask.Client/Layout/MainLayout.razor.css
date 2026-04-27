@@ -1,0 +1,8 @@
+/* Board content area: flex row for horizontal column scroll */
+::deep .board-content {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    flex-grow: 1;
+    align-items: flex-start;
+}
