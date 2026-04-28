@@ -2,17 +2,24 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 8px;
-    border-radius: 8px;
+    padding: 8px 10px;
+    border-radius: 10px;
     cursor: pointer;
-    color: #44546f;
+    color: var(--mud-palette-text-secondary);
     font-size: 0.8125rem;
     font-weight: 500;
-    transition: background-color 0.1s ease, color 0.1s ease;
+    transition:
+        background-color var(--duration-fast) var(--ease-standard),
+        color var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
     user-select: none;
 }
 
 .quick-add-trigger:hover {
-    background: rgba(0, 0, 0, 0.06);
-    color: #172b4d;
+    background: var(--mud-palette-action-default-hover);
+    color: var(--mud-palette-text-primary);
+}
+
+.quick-add-trigger:active {
+    transform: scale(0.97);
 }

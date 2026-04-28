@@ -330,6 +330,11 @@ namespace NivoTask.Api.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<bool?>("ActiveTimerFlag")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tinyint(1)")
+                        .HasComputedColumnSql("CASE WHEN `StartTime` IS NOT NULL AND `EndTime` IS NULL THEN TRUE ELSE NULL END", true);
+
                     b.Property<int>("DurationSeconds")
                         .HasColumnType("int");
 
@@ -353,10 +358,9 @@ namespace NivoTask.Api.Data.Migrations
 
                     b.HasIndex("TaskId");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("UserId", "ActiveTimerFlag")
                         .IsUnique()
-                        .HasDatabaseName("IX_TimeEntries_ActiveTimer")
-                        .HasFilter("`StartTime` IS NOT NULL AND `EndTime` IS NULL");
+                        .HasDatabaseName("IX_TimeEntries_ActiveTimer");
 
                     b.ToTable("TimeEntries");
                 });

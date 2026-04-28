@@ -1,3 +1,5 @@
+using NivoTask.Shared.Dtos.Labels;
+
 namespace NivoTask.Shared.Dtos.Tasks;
 
 public class BoardTaskResponse
@@ -9,6 +11,10 @@ public class BoardTaskResponse
     public int SubTaskCount { get; set; }
     public int CompletedSubTaskCount { get; set; }
     public int TotalTimeSeconds { get; set; }
+    public int? Priority { get; set; }
+    public DateTime? DueDate { get; set; }
+    public string? CoverColor { get; set; }
+    public List<LabelResponse> Labels { get; set; } = [];
     public List<BoardSubTaskInfo> SubTasks { get; set; } = [];
 }
 

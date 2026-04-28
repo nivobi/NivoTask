@@ -17,11 +17,11 @@
             @foreach (var color in _colorOptions)
             {
                 <div @onclick="() => { _boardColor = color; _customColor = false; }"
-                     style="width: 32px; height: 32px; border-radius: 8px; background: @color; cursor: pointer; border: 2px solid @(!_customColor && _boardColor == color ? "#1a1a1a" : "transparent"); transition: border-color 0.1s ease;">
+                     style="width: 32px; height: 32px; border-radius: 8px; background: @color; cursor: pointer; border: 2px solid @(!_customColor && _boardColor == color ? "var(--mud-palette-text-primary)" : "transparent"); transition: border-color var(--duration-fast) var(--ease-standard);">
                 </div>
             }
             <div @onclick="() => _customColor = true"
-                 style="width: 32px; height: 32px; border-radius: 8px; cursor: pointer; border: 2px solid @(_customColor ? "#1a1a1a" : "rgba(0,0,0,0.15)"); display: flex; align-items: center; justify-content: center; background: @(_customColor && !string.IsNullOrEmpty(_boardColor) ? _boardColor : "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)"); transition: border-color 0.1s ease;"
+                 style="width: 32px; height: 32px; border-radius: 8px; cursor: pointer; border: 2px solid @(_customColor ? "var(--mud-palette-text-primary)" : "var(--mud-palette-divider)"); display: flex; align-items: center; justify-content: center; background: @(_customColor && !string.IsNullOrEmpty(_boardColor) ? _boardColor : "conic-gradient(red, yellow, lime, aqua, blue, magenta, red)"); transition: border-color var(--duration-fast) var(--ease-standard);"
                  title="Custom color">
             </div>
         </div>
@@ -39,9 +39,27 @@
             @foreach (var icon in _iconOptions)
             {
                 <div @onclick="() => _boardIcon = icon.Value"
-                     style="width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: @(_boardIcon == icon.Value ? "rgba(0,0,0,0.08)" : "transparent"); border: 2px solid @(_boardIcon == icon.Value ? "#1a1a1a" : "transparent"); transition: all 0.1s ease;"
+                     style="width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; background: @(_boardIcon == icon.Value ? "var(--mud-palette-action-default-hover)" : "transparent"); border: 2px solid @(_boardIcon == icon.Value ? "var(--mud-palette-text-primary)" : "transparent"); transition: all var(--duration-fast) var(--ease-standard);"
                      title="@icon.Name">
                     <MudIcon Icon="@icon.Value" Size="Size.Small" Style="opacity: 0.7;" />
+                </div>
+            }
+        </div>
+
+        <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.5; margin-bottom: 8px;">Background</MudText>
+        <div class="d-flex flex-wrap gap-2 mb-4">
+            <div @onclick="() => { _bgType = null; _bgValue = null; }"
+                 style="width: 48px; height: 32px; border-radius: 6px; cursor: pointer; background: var(--mud-palette-background-gray);
+                        border: 2px solid @(_bgType is null ? "var(--mud-palette-text-primary)" : "transparent");
+                        display: flex; align-items: center; justify-content: center; font-size: 0.625rem; opacity: 0.5;">
+                None
+            </div>
+            @foreach (var grad in _gradientOptions)
+            {
+                <div @onclick="() => { _bgType = 1; _bgValue = grad.Value; }"
+                     style="width: 48px; height: 32px; border-radius: 6px; cursor: pointer; background: @grad.Value;
+                            border: 2px solid @(_bgType == 1 && _bgValue == grad.Value ? "var(--mud-palette-text-primary)" : "transparent");"
+                     title="@grad.Name">
                 </div>
             }
         </div>
@@ -104,10 +122,14 @@
     [Parameter] public string? BoardColor { get; set; }
     [Parameter] public string? BoardIcon { get; set; }
     [Parameter] public List<ColumnEditModel> Columns { get; set; } = [];
+    [Parameter] public int? BoardBackgroundType { get; set; }
+    [Parameter] public string? BoardBackgroundValue { get; set; }
 
     private string _boardName = string.Empty;
     private string? _boardColor;
     private string? _boardIcon;
+    private int? _bgType;
+    private string? _bgValue;
     private List<ColumnEditModel> _columns = [];
     private string? _columnError;
     private bool _saving;
@@ -124,6 +146,20 @@
         "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f97316",
         "#f59e0b", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
         "#64748b", "#1a1a1a"
+    ];
+
+    private record GradientOption(string Name, string Value);
+
+    private static readonly GradientOption[] _gradientOptions =
+    [
+        new("Ocean", "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"),
+        new("Sunset", "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"),
+        new("Forest", "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)"),
+        new("Warm", "linear-gradient(135deg, #fa709a 0%, #fee140 100%)"),
+        new("Night", "linear-gradient(135deg, #0c3483 0%, #a2b6df 100%)"),
+        new("Mint", "linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)"),
+        new("Peach", "linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)"),
+        new("Slate", "linear-gradient(135deg, #868f96 0%, #596164 100%)")
     ];
 
     private record IconOption(string Name, string Value);
@@ -232,6 +268,8 @@
         _boardName = BoardName;
         _boardColor = BoardColor;
         _boardIcon = BoardIcon;
+        _bgType = BoardBackgroundType;
+        _bgValue = BoardBackgroundValue;
         _columns = Columns.Select(c => new ColumnEditModel
         {
             Id = c.Id, Name = c.Name, IsDone = c.IsDone, TaskCount = c.TaskCount, IsNew = false
@@ -301,7 +339,9 @@
             {
                 Name = _boardName.Trim(),
                 Color = _boardColor,
-                Icon = _boardIcon?.Trim()
+                Icon = _boardIcon?.Trim(),
+                BackgroundType = _bgType,
+                BackgroundValue = _bgValue
             });
 
             // Create any new columns

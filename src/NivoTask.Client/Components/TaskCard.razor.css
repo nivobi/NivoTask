@@ -1,20 +1,81 @@
 .task-card {
-    background: #ffffff;
-    border-radius: 8px;
-    padding: 8px 12px;
+    background: var(--mud-palette-surface);
+    border-radius: 12px;
+    padding: 10px 14px;
     cursor: pointer;
-    box-shadow: 0 1px 1px rgba(9, 30, 66, 0.13), 0 0 1px rgba(9, 30, 66, 0.12);
-    transition: background-color 0.1s ease, box-shadow 0.15s ease;
+    box-shadow: 0 0.5px 1px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06);
+    transition:
+        background-color var(--duration-fast) var(--ease-standard),
+        box-shadow var(--duration-normal) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-standard);
+    animation: fadeSlideUp var(--duration-entrance) var(--ease-decelerate) both;
     user-select: none;
 }
 
 .task-card:hover {
-    background: #f7f8f9;
-    box-shadow: 0 2px 4px rgba(9, 30, 66, 0.15), 0 0 1px rgba(9, 30, 66, 0.12);
+    background: var(--mud-palette-background-gray);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04), 0 3px 12px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
 }
 
 .task-card:active {
-    background: #ebecf0;
+    background: var(--mud-palette-background-gray);
+    transform: scale(0.98);
+    transition:
+        transform 0.1s var(--ease-standard),
+        box-shadow 0.1s var(--ease-standard);
+}
+
+/* Label bars */
+.task-card-labels {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.label-bar {
+    height: 6px;
+    min-width: 32px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* Cover color strip */
+.task-card-cover {
+    height: 6px;
+    border-radius: 6px;
+    margin: -4px -4px 8px -4px;
+    flex-shrink: 0;
+}
+
+/* Priority badge */
+.priority-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 5px;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    width: fit-content;
+    margin-bottom: 4px;
+}
+
+.priority-badge.priority-1 {
+    background: rgba(10, 132, 255, 0.1);
+    color: #0A84FF;
+}
+
+.priority-badge.priority-2 {
+    background: rgba(255, 159, 10, 0.12);
+    color: #FF9F0A;
+}
+
+.priority-badge.priority-3 {
+    background: rgba(255, 69, 58, 0.12);
+    color: #FF453A;
 }
 
 .task-card-title {
@@ -22,7 +83,7 @@
     font-size: 0.875rem;
     font-weight: 400;
     line-height: 1.5;
-    color: #172b4d;
+    color: var(--mud-palette-text-primary);
     word-wrap: break-word;
     overflow-wrap: break-word;
 }
@@ -34,7 +95,7 @@
     gap: 3px;
     margin-top: 8px;
     padding-top: 6px;
-    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    border-top: 1px solid var(--mud-palette-divider);
 }
 
 .checklist-item {
@@ -53,22 +114,26 @@
     width: 14px;
     height: 14px;
     border-radius: 3px;
-    border: 1.5px solid #c1c7d0;
+    border: 1.5px solid var(--mud-palette-action-disabled);
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.1s ease;
+    transition:
+        background var(--duration-fast) var(--ease-standard),
+        border-color var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-spring);
 }
 
 .check-box.checked {
     background: #36b37e;
     border-color: #36b37e;
+    animation: checkPop 0.25s var(--ease-spring);
 }
 
 .checklist-title {
     font-size: 0.75rem;
-    color: #44546f;
+    color: var(--mud-palette-text-secondary);
     line-height: 1.4;
     white-space: nowrap;
     overflow: hidden;
@@ -77,7 +142,7 @@
 
 .checklist-more {
     font-size: 0.6875rem;
-    color: #8993a4;
+    color: var(--mud-palette-text-disabled);
     padding-left: 20px;
     font-weight: 500;
 }
@@ -94,7 +159,7 @@
     display: flex;
     align-items: center;
     gap: 3px;
-    color: #626f86;
+    color: var(--mud-palette-text-secondary);
     font-size: 0.6875rem;
     font-weight: 500;
 }
@@ -110,4 +175,53 @@
 
 .task-card-badge.complete svg {
     opacity: 0.8;
+}
+
+/* Due date states */
+.due-date.overdue {
+    color: #FF453A;
+}
+
+.due-date.overdue svg {
+    opacity: 0.8;
+}
+
+.due-date.due-today {
+    color: #FF9F0A;
+}
+
+.due-date.due-today svg {
+    opacity: 0.8;
+}
+
+/* Completion celebration */
+.task-card.just-completed {
+    animation: completeCelebration 0.6s var(--ease-spring);
+}
+
+/* Active timer state */
+.task-card.timer-active {
+    border-left: 2px solid var(--mud-palette-secondary);
+}
+
+.task-card-badge.timer-running {
+    color: var(--mud-palette-secondary);
+}
+
+.task-card-badge.timer-running svg {
+    opacity: 0.8;
+}
+
+.pulse-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--mud-palette-secondary);
+    animation: pulse-dot 2s infinite;
+    flex-shrink: 0;
+}
+
+@keyframes pulse-dot {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.85); }
 }

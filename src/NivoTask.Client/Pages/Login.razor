@@ -5,7 +5,7 @@
 @inject NavigationManager Navigation
 
 <div class="d-flex align-center justify-center" style="height: 100vh;">
-    <MudCard Style="width: 400px;">
+    <MudCard Style="width: 420px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.08); border: none; animation: fadeScaleIn 0.4s cubic-bezier(0.0, 0.0, 0.2, 1.0);">
         <MudCardHeader>
             <CardHeaderContent>
                 <MudText Typo="Typo.h4" Align="Align.Center">NivoTask</MudText>
@@ -25,7 +25,7 @@
             <MudCheckBox @bind-Value="_rememberMe" Label="Remember me" Color="Color.Primary" />
         </MudCardContent>
         <MudCardActions>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true"
                        OnClick="HandleLogin" Disabled="@_loading">
                 @if (_loading)
                 {

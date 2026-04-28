@@ -1,8 +1,51 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject ThemeService ThemeService
 
-<MudThemeProvider />
+<MudThemeProvider Theme="_theme" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 @Body
+
+@code {
+    private bool _isDarkMode;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#1d1d1f",
+            Secondary = "#007AFF",
+            Background = "#f5f5f7",
+            Surface = "#ffffff",
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#f5f5f7",
+            Secondary = "#0A84FF",
+            Background = "#000000",
+            Surface = "#1c1c1e",
+        },
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ThemeService.InitializeAsync();
+            _isDarkMode = ThemeService.IsDarkMode;
+            ThemeService.OnThemeChanged += HandleThemeChanged;
+            StateHasChanged();
+        }
+    }
+
+    private async void HandleThemeChanged()
+    {
+        _isDarkMode = ThemeService.IsDarkMode;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => ThemeService.OnThemeChanged -= HandleThemeChanged;
+}

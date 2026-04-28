@@ -1,14 +1,17 @@
+@using Markdig
+@using NivoTask.Shared.Dtos.Labels
 @using NivoTask.Shared.Dtos.TimeEntries
 @implements IDisposable
 @inject TaskService TaskService
 @inject TimeEntryService TimeEntryService
+@inject LabelService LabelService
 @inject TimerStateService TimerState
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 
-<div style="display: flex; flex-direction: column; height: 100%; background: #fff;">
+<div @key="TaskId" class="detail-panel-content" style="display: flex; flex-direction: column; height: 100%; background: var(--mud-palette-surface);">
     @* Panel header *@
-    <div style="padding: 20px 24px 0; flex-shrink: 0;">
+    <div style="padding: 24px 28px 0; flex-shrink: 0;">
         <div class="d-flex justify-space-between align-center mb-3">
             <MudText Typo="Typo.body2" Style="opacity: 0.4; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;">
                 Task Detail
@@ -24,19 +27,19 @@
 
     @if (_loading)
     {
-        <div style="padding: 0 24px;">
+        <div style="padding: 0 28px;">
             <MudSkeleton SkeletonType="SkeletonType.Text" Width="70%" Height="28px" Class="mb-3" />
             <MudSkeleton SkeletonType="SkeletonType.Text" Width="40%" Height="16px" Class="mb-6" />
             @for (int i = 0; i < 3; i++)
             {
                 <MudSkeleton SkeletonType="SkeletonType.Rectangle" Width="100%" Height="44px"
-                             Class="mb-2" Style="border-radius: 8px;" />
+                             Class="mb-2" Style="border-radius: 10px;" />
             }
         </div>
     }
     else if (_task is null)
     {
-        <div style="padding: 24px; text-align: center;">
+        <div style="padding: 28px; text-align: center;">
             <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Large"
                      Style="opacity: 0.2; font-size: 48px;" Class="mb-3" />
             <MudText Typo="Typo.body1" Style="opacity: 0.5;">
@@ -47,7 +50,7 @@
     else
     {
         @* Scrollable content *@
-        <div style="flex: 1; overflow-y: auto; padding: 0 24px 24px;">
+        <div style="flex: 1; overflow-y: auto; padding: 0 28px 28px;">
 
             @* Title + total time *@
             <div class="mb-1">
@@ -66,7 +69,7 @@
                 }
             </div>
 
-            @if (_task.TotalTimeSeconds > 0)
+            @if (_task.TotalTimeSeconds > 0 || (TimerState.IsRunning && _task.SubTasks?.Any(st => st.Id == TimerState.ActiveTaskId) == true))
             {
                 <div class="d-flex align-center gap-1 mb-3">
                     <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Small"
@@ -91,10 +94,10 @@
             }
             else if (!string.IsNullOrEmpty(_task.Description))
             {
-                <MudText Typo="Typo.body2" Style="opacity: 0.6; cursor: text; line-height: 1.6;" Class="mb-4"
-                         @onclick="StartEditingDescription">
-                    @_task.Description
-                </MudText>
+                <div class="mb-4" style="opacity: 0.6; cursor: text; line-height: 1.6; font-size: 0.8125rem;"
+                     @onclick="StartEditingDescription">
+                    @((MarkupString)RenderMarkdown(_task.Description))
+                </div>
             }
             else
             {
@@ -104,6 +107,169 @@
                     </MudText>
                 </div>
             }
+
+            @* Priority *@
+            <div class="mb-3">
+                <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.4; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;" Class="mb-1">
+                    Priority
+                </MudText>
+                <div class="d-flex gap-2">
+                    <MudChip T="string" Color="@(_task.Priority == null || _task.Priority == 0 ? Color.Default : Color.Surface)"
+                             OnClick="() => SetPriority(null)"
+                             Style="@(_task.Priority == null || _task.Priority == 0 ? "font-weight: 500;" : "opacity: 0.5;")"
+                             Size="Size.Small">None</MudChip>
+                    <MudChip T="string" Color="@(_task.Priority == 1 ? Color.Info : Color.Surface)"
+                             OnClick="() => SetPriority(1)"
+                             Style="@(_task.Priority == 1 ? "font-weight: 500;" : "opacity: 0.5;")"
+                             Size="Size.Small">Low</MudChip>
+                    <MudChip T="string" Color="@(_task.Priority == 2 ? Color.Warning : Color.Surface)"
+                             OnClick="() => SetPriority(2)"
+                             Style="@(_task.Priority == 2 ? "font-weight: 500;" : "opacity: 0.5;")"
+                             Size="Size.Small">Medium</MudChip>
+                    <MudChip T="string" Color="@(_task.Priority == 3 ? Color.Error : Color.Surface)"
+                             OnClick="() => SetPriority(3)"
+                             Style="@(_task.Priority == 3 ? "font-weight: 500;" : "opacity: 0.5;")"
+                             Size="Size.Small">High</MudChip>
+                </div>
+            </div>
+
+            @* Due date *@
+            <div class="mb-3">
+                <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.4; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;" Class="mb-1">
+                    Due Date
+                </MudText>
+
+                @* Current date display *@
+                @if (_task.DueDate.HasValue)
+                {
+                    <div class="d-flex align-center gap-2 mb-2" style="padding: 8px 12px; background: var(--mud-palette-background-gray); border-radius: 10px;">
+                        <MudIcon Icon="@Icons.Material.Outlined.CalendarToday" Size="Size.Small"
+                                 Style="font-size: 16px; opacity: 0.5;" />
+                        <span style="font-size: 0.875rem; font-weight: 500; flex: 1; color: @DueDateDisplayColor;">
+                            @FormatDueDateDisplay(_task.DueDate.Value)
+                        </span>
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                       OnClick="() => SetDueDate(null)" Style="opacity: 0.3;" />
+                    </div>
+                }
+
+                @* Quick-set pills *@
+                <div class="d-flex gap-2 flex-wrap">
+                    <div style="@DueQuickBtnStyle(IsDueDateToday)" @onclick="() => SetDueDate(DateTime.UtcNow.Date)">
+                        <MudIcon Icon="@Icons.Material.Filled.Today" Size="Size.Small" Style="font-size: 14px;" />
+                        <span>Today</span>
+                    </div>
+                    <div style="@DueQuickBtnStyle(IsDueDateTomorrow)" @onclick="() => SetDueDate(DateTime.UtcNow.Date.AddDays(1))">
+                        <MudIcon Icon="@Icons.Material.Filled.NavigateNext" Size="Size.Small" Style="font-size: 14px;" />
+                        <span>Tomorrow</span>
+                    </div>
+                    <div style="@DueQuickBtnStyle(false)" @onclick="() => SetDueDate(GetNextMonday())">
+                        <MudIcon Icon="@Icons.Material.Filled.DateRange" Size="Size.Small" Style="font-size: 14px;" />
+                        <span>Next Mon</span>
+                    </div>
+                    <div style="@DueQuickBtnStyle(false)" @onclick="() => _showDatePicker = !_showDatePicker">
+                        <MudIcon Icon="@Icons.Material.Filled.EditCalendar" Size="Size.Small" Style="font-size: 14px;" />
+                        <span>Pick</span>
+                    </div>
+                </div>
+
+                @* Inline calendar (toggled) *@
+                @if (_showDatePicker)
+                {
+                    <div style="margin-top: 10px; border-radius: 12px; overflow: hidden; border: 1px solid var(--mud-palette-divider);">
+                        <MudDatePicker Date="_dueDateValue" DateChanged="HandleDueDatePickedAndClose"
+                                       PickerVariant="PickerVariant.Static" Elevation="0"
+                                       Style="width: 100%;" />
+                    </div>
+                }
+            </div>
+
+            @* Cover color *@
+            <div class="mb-4">
+                <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.4; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;" Class="mb-1">
+                    Cover Color
+                </MudText>
+                <div class="d-flex gap-2 flex-wrap align-center">
+                    @foreach (var color in _coverColors)
+                    {
+                        <div style="width: 24px; height: 24px; border-radius: 6px; background: @color; cursor: pointer;
+                                    border: 2px solid @(_task.CoverColor == color ? "var(--mud-palette-text-primary)" : "transparent");
+                                    transition: border-color 0.15s ease;"
+                             @onclick="() => SetCoverColor(color)"></div>
+                    }
+                    @if (!string.IsNullOrEmpty(_task.CoverColor))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                       OnClick="() => SetCoverColor(null)" Style="opacity: 0.35;" />
+                    }
+                </div>
+            </div>
+
+            @* Labels *@
+            <div class="mb-4">
+                <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.4; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;" Class="mb-1">
+                    Labels
+                </MudText>
+                <div class="d-flex gap-2 flex-wrap align-center">
+                    @foreach (var label in _task.Labels)
+                    {
+                        <MudChip T="string" Size="Size.Small"
+                                 Style="@($"background: {label.Color}; color: white; font-weight: 500;")"
+                                 OnClose="() => RemoveLabel(label.Id)">
+                            @label.Name
+                        </MudChip>
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                   OnClick="ToggleLabelPicker" Style="opacity: 0.35;" />
+                </div>
+                @if (_showLabelPicker)
+                {
+                    <div style="margin-top: 8px; padding: 12px; background: var(--mud-palette-background-gray); border-radius: 8px;">
+                        @if (_boardLabels is null)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                        }
+                        else
+                        {
+                            @foreach (var label in _boardLabels)
+                            {
+                                var isSelected = _task.Labels.Any(l => l.Id == label.Id);
+                                <div class="d-flex align-center gap-2 py-1" style="cursor: pointer;"
+                                     @onclick="() => ToggleLabel(label)">
+                                    <div style="width: 20px; height: 20px; border-radius: 4px; background: @label.Color;
+                                                display: flex; align-items: center; justify-content: center;">
+                                        @if (isSelected)
+                                        {
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                <polyline points="20 6 9 17 4 12"/>
+                                            </svg>
+                                        }
+                                    </div>
+                                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@label.Name</MudText>
+                                </div>
+                            }
+                            <div class="mt-2 pt-2" style="border-top: 1px solid var(--mud-palette-divider);">
+                                <div class="d-flex gap-2 align-center">
+                                    <MudTextField T="string" @bind-Value="_newLabelName" Placeholder="Label name"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  Style="font-size: 0.8125rem; flex: 1;" />
+                                    <div class="d-flex gap-1">
+                                        @foreach (var color in _labelColors)
+                                        {
+                                            <div style="width: 18px; height: 18px; border-radius: 4px; background: @color; cursor: pointer;
+                                                        border: 2px solid @(_newLabelColor == color ? "var(--mud-palette-text-primary)" : "transparent");"
+                                                 @onclick="() => _newLabelColor = color"></div>
+                                        }
+                                    </div>
+                                    <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small"
+                                                   OnClick="CreateNewLabel"
+                                                   Disabled="@string.IsNullOrWhiteSpace(_newLabelName)" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
 
             @* Sub-tasks section *@
             <div style="margin-top: 8px;">
@@ -155,14 +321,57 @@
                                   Style="font-size: 0.875rem;" />
                 </div>
             </div>
+
+            @* Activity feed *@
+            <div style="margin-top: 20px; border-top: 1px solid var(--mud-palette-divider); padding-top: 12px;">
+                <div class="d-flex align-center gap-2 mb-2" style="cursor: pointer;" @onclick="ToggleActivity">
+                    <MudIcon Icon="@Icons.Material.Outlined.History" Size="Size.Small" Style="opacity: 0.35; font-size: 16px;" />
+                    <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.4; letter-spacing: 0.05em; text-transform: uppercase; font-size: 0.6875rem;">
+                        Activity
+                    </MudText>
+                    <MudIcon Icon="@(_showActivity ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                             Size="Size.Small" Style="opacity: 0.25;" />
+                </div>
+                @if (_showActivity)
+                {
+                    @if (_activityEntries is null)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="my-2" />
+                    }
+                    else if (_activityEntries.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Style="opacity: 0.3; font-size: 0.75rem;" Class="py-2">
+                            No activity yet
+                        </MudText>
+                    }
+                    else
+                    {
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            @foreach (var entry in _activityEntries)
+                            {
+                                <div class="d-flex gap-2 align-start" style="font-size: 0.75rem;">
+                                    <MudIcon Icon="@GetActivityIcon(entry.Action)" Size="Size.Small"
+                                             Style="font-size: 14px; opacity: 0.3; margin-top: 1px; flex-shrink: 0;" />
+                                    <div>
+                                        <span style="opacity: 0.6;">@entry.Detail</span>
+                                        <span style="opacity: 0.25; margin-left: 6px;">@FormatRelativeTime(entry.CreatedAt)</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </div>
         </div>
     }
 </div>
 
 @code {
     [Parameter] public int TaskId { get; set; }
+    [Parameter] public int BoardId { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback<int> OnDeleted { get; set; }
+    [Parameter] public EventCallback<int> OnTaskUpdated { get; set; }
 
     private TaskDetailResponse? _task;
     private bool _loading = true;
@@ -173,6 +382,40 @@
     private string _newSubTaskTitle = "";
     private bool _creatingSubTask;
     private int _previousTaskId;
+    private DateTime? _dueDateValue;
+
+    private static readonly string[] _coverColors =
+    [
+        "#FF453A", "#FF9F0A", "#FFD60A", "#30D158", "#0A84FF",
+        "#5E5CE6", "#BF5AF2", "#FF375F", "#64D2FF", "#AC8E68"
+    ];
+
+    private bool _showDatePicker;
+
+    private static string DueQuickBtnStyle(bool active) =>
+        $"display: flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 8px; " +
+        $"font-size: 0.75rem; font-weight: 500; cursor: pointer; transition: all 0.15s ease; " +
+        (active
+            ? "background: color-mix(in srgb, var(--mud-palette-primary) 12%, transparent); color: var(--mud-palette-primary);"
+            : "background: var(--mud-palette-background-gray); opacity: 0.7; color: var(--mud-palette-text-secondary);");
+    private bool IsDueDateToday => _task?.DueDate?.Date == DateTime.UtcNow.Date;
+    private bool IsDueDateTomorrow => _task?.DueDate?.Date == DateTime.UtcNow.Date.AddDays(1);
+
+    // Labels
+    private bool _showLabelPicker;
+    private List<LabelResponse>? _boardLabels;
+    private string _newLabelName = "";
+    private string _newLabelColor = "#0A84FF";
+
+    // Activity
+    private bool _showActivity;
+    private List<ActivityEntryResponse>? _activityEntries;
+
+    private static readonly string[] _labelColors =
+    [
+        "#30D158", "#FFD60A", "#FF9F0A", "#FF453A", "#5E5CE6",
+        "#0A84FF", "#64D2FF", "#AC8E68", "#FF375F", "#1d1d1f"
+    ];
 
     protected override async Task OnParametersSetAsync()
     {
@@ -199,6 +442,11 @@
         try
         {
             _task = await TaskService.GetTaskDetailAsync(TaskId);
+            _dueDateValue = _task?.DueDate;
+            _activityEntries = null;
+            _showActivity = false;
+            _showLabelPicker = false;
+            _boardLabels = null;
         }
         catch
         {
@@ -217,7 +465,7 @@
         if (string.IsNullOrWhiteSpace(_editTitle) || _editTitle == _task!.Title) return;
         var old = _task.Title;
         _task.Title = _editTitle;
-        try { await TaskService.UpdateTaskAsync(_task.Id, new UpdateTaskRequest { Title = _editTitle, Description = _task.Description }); }
+        try { _task.Title = _editTitle; await SaveTaskMetadata(); }
         catch { _task.Title = old; Snackbar.Add("Could not update task.", Severity.Error); }
     }
 
@@ -236,7 +484,7 @@
         if (newDesc == _task!.Description) return;
         var old = _task.Description;
         _task.Description = newDesc;
-        try { await TaskService.UpdateTaskAsync(_task.Id, new UpdateTaskRequest { Title = _task.Title, Description = newDesc }); }
+        try { _task.Description = newDesc; await SaveTaskMetadata(); }
         catch { _task.Description = old; Snackbar.Add("Could not update task.", Severity.Error); }
     }
 
@@ -265,6 +513,7 @@
         }
         catch { }
         StateHasChanged();
+        await OnTaskUpdated.InvokeAsync(TaskId);
     }
 
     private async Task HandleSubTaskDeleted(int subTaskId)
@@ -309,10 +558,208 @@
         }
     }
 
-    private static string FormatTime(int seconds)
+    private async Task SetPriority(int? priority)
     {
-        var h = seconds / 3600;
-        var m = (seconds % 3600) / 60;
+        if (_task is null) return;
+        var old = _task.Priority;
+        _task.Priority = priority;
+        try { await SaveTaskMetadata(); }
+        catch { _task.Priority = old; Snackbar.Add("Could not update priority.", Severity.Error); }
+    }
+
+    private async Task SetDueDate(DateTime? date)
+    {
+        if (_task is null) return;
+        var old = _task.DueDate;
+        _task.DueDate = date;
+        _dueDateValue = date;
+        try { await SaveTaskMetadata(); }
+        catch { _task.DueDate = old; _dueDateValue = old; Snackbar.Add("Could not update due date.", Severity.Error); }
+    }
+
+    private async Task HandleDueDatePicked(DateTime? date)
+    {
+        await SetDueDate(date);
+    }
+
+    private async Task HandleDueDatePickedAndClose(DateTime? date)
+    {
+        _showDatePicker = false;
+        await SetDueDate(date);
+    }
+
+    private string DueDateDisplayColor
+    {
+        get
+        {
+            if (!_task?.DueDate.HasValue ?? true) return "inherit";
+            var d = _task!.DueDate!.Value.Date;
+            var today = DateTime.UtcNow.Date;
+            if (d < today) return "#FF453A";
+            if (d == today) return "#FF9F0A";
+            return "var(--mud-palette-text-primary)";
+        }
+    }
+
+    private static string FormatDueDateDisplay(DateTime date)
+    {
+        var d = date.Date;
+        var today = DateTime.UtcNow.Date;
+        var diff = (d - today).Days;
+
+        var dateStr = d == today ? "Today"
+            : d == today.AddDays(1) ? "Tomorrow"
+            : d == today.AddDays(-1) ? "Yesterday"
+            : d.Year == today.Year ? d.ToString("ddd, MMM d")
+            : d.ToString("ddd, MMM d, yyyy");
+
+        if (diff < 0) return $"{dateStr} ({Math.Abs(diff)}d overdue)";
+        if (diff == 0) return dateStr;
+        if (diff <= 7) return $"{dateStr} (in {diff}d)";
+        return dateStr;
+    }
+
+    private static DateTime GetNextMonday()
+    {
+        var today = DateTime.UtcNow.Date;
+        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+        if (daysUntilMonday == 0) daysUntilMonday = 7;
+        return today.AddDays(daysUntilMonday);
+    }
+
+    private async Task SetCoverColor(string? color)
+    {
+        if (_task is null) return;
+        var old = _task.CoverColor;
+        _task.CoverColor = color;
+        try { await SaveTaskMetadata(); }
+        catch { _task.CoverColor = old; Snackbar.Add("Could not update cover color.", Severity.Error); }
+    }
+
+    private async Task ToggleLabelPicker()
+    {
+        _showLabelPicker = !_showLabelPicker;
+        if (_showLabelPicker && _boardLabels is null && BoardId > 0)
+        {
+            try { _boardLabels = await LabelService.GetLabelsAsync(BoardId); }
+            catch { Snackbar.Add("Could not load labels.", Severity.Error); }
+        }
+    }
+
+    private async Task ToggleLabel(LabelResponse label)
+    {
+        if (_task is null) return;
+        var existing = _task.Labels.FirstOrDefault(l => l.Id == label.Id);
+        if (existing is not null)
+            _task.Labels.Remove(existing);
+        else
+            _task.Labels.Add(label);
+
+        try
+        {
+            await LabelService.SetTaskLabelsAsync(_task.Id, _task.Labels.Select(l => l.Id).ToList());
+            await OnTaskUpdated.InvokeAsync(_task.Id);
+        }
+        catch { Snackbar.Add("Could not update labels.", Severity.Error); }
+    }
+
+    private async Task RemoveLabel(int labelId)
+    {
+        if (_task is null) return;
+        _task.Labels.RemoveAll(l => l.Id == labelId);
+        try
+        {
+            await LabelService.SetTaskLabelsAsync(_task.Id, _task.Labels.Select(l => l.Id).ToList());
+            await OnTaskUpdated.InvokeAsync(_task.Id);
+        }
+        catch { Snackbar.Add("Could not update labels.", Severity.Error); }
+    }
+
+    private async Task CreateNewLabel()
+    {
+        if (_task is null || string.IsNullOrWhiteSpace(_newLabelName) || BoardId <= 0) return;
+        try
+        {
+            var created = await LabelService.CreateLabelAsync(BoardId,
+                new CreateLabelRequest { Name = _newLabelName, Color = _newLabelColor });
+            if (created is not null)
+            {
+                _boardLabels?.Add(created);
+                _task.Labels.Add(created);
+                await LabelService.SetTaskLabelsAsync(_task.Id, _task.Labels.Select(l => l.Id).ToList());
+                await OnTaskUpdated.InvokeAsync(_task.Id);
+            }
+            _newLabelName = "";
+        }
+        catch { Snackbar.Add("Could not create label.", Severity.Error); }
+    }
+
+    private async Task SaveTaskMetadata()
+    {
+        await TaskService.UpdateTaskAsync(_task!.Id, new UpdateTaskRequest
+        {
+            Title = _task.Title,
+            Description = _task.Description,
+            Priority = _task.Priority,
+            DueDate = _task.DueDate,
+            CoverColor = _task.CoverColor
+        });
+        await OnTaskUpdated.InvokeAsync(_task.Id);
+    }
+
+    private async Task ToggleActivity()
+    {
+        _showActivity = !_showActivity;
+        if (_showActivity && _activityEntries is null && _task is not null)
+        {
+            try { _activityEntries = await TaskService.GetActivityAsync(_task.Id); }
+            catch { Snackbar.Add("Could not load activity.", Severity.Error); }
+        }
+    }
+
+    private static string GetActivityIcon(string action) => action switch
+    {
+        "Created" => Icons.Material.Filled.Add,
+        "Moved" => Icons.Material.Filled.SwapHoriz,
+        "Completed" => Icons.Material.Filled.CheckCircle,
+        "Updated" => Icons.Material.Filled.Edit,
+        "PriorityChanged" => Icons.Material.Filled.Flag,
+        "DueDateSet" => Icons.Material.Filled.CalendarToday,
+        _ => Icons.Material.Filled.Info
+    };
+
+    private static string FormatRelativeTime(DateTime utcTime)
+    {
+        var diff = DateTime.UtcNow - utcTime;
+        if (diff.TotalMinutes < 1) return "just now";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays < 7) return $"{(int)diff.TotalDays}d ago";
+        return utcTime.ToString("MMM d");
+    }
+
+    private static readonly MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .Build();
+
+    private static string RenderMarkdown(string markdown)
+        => Markdown.ToHtml(markdown, _mdPipeline);
+
+    private string FormatTime(int seconds)
+    {
+        // Add live elapsed seconds if timer is active on a sub-task of this task
+        var totalSecs = seconds;
+        if (TimerState.IsRunning && _task?.SubTasks?.Any(st => st.Id == TimerState.ActiveTaskId) == true)
+            totalSecs += TimerState.ElapsedSeconds;
+
+        var h = totalSecs / 3600;
+        var m = (totalSecs % 3600) / 60;
+        var s = totalSecs % 60;
+
+        if (TimerState.IsRunning && _task?.SubTasks?.Any(st => st.Id == TimerState.ActiveTaskId) == true)
+            return h > 0 ? $"{h}h {m:D2}m {s:D2}s" : $"{m}m {s:D2}s";
+
+        if (totalSecs < 60) return $"{totalSecs}s";
         if (h > 0) return $"{h}h {m:D2}m";
         return $"{m}m";
     }

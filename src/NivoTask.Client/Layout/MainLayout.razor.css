@@ -14,14 +14,15 @@
 
 /* Softer drawer overlay */
 ::deep .mud-overlay {
-    background-color: rgba(0, 0, 0, 0.15) !important;
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    background-color: rgba(0, 0, 0, 0.18) !important;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
 }
 
 /* Smoother scrollbars */
 ::deep ::-webkit-scrollbar {
-    width: 6px;
+    width: 7px;
+    height: 7px;
 }
 
 ::deep ::-webkit-scrollbar-track {
@@ -29,17 +30,38 @@
 }
 
 ::deep ::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
 }
 
 ::deep ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 0, 0, 0.2);
+    background: rgba(0, 0, 0, 0.15);
 }
 
 /* Force main content top padding below fixed app bar */
 ::deep .mud-main-content {
-    padding-top: 70px !important;
+    padding-top: 76px !important;
+}
+
+/* Apple-style glass: saturate + blur */
+::deep .app-bar-glass {
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* Smooth detail panel slide */
+::deep .mud-drawer-anchor-end {
+    transition: transform var(--duration-slow) var(--ease-decelerate) !important;
+}
+
+/* Detail panel content entrance */
+::deep .detail-panel-content {
+    animation: panelSlideIn var(--duration-entrance) var(--ease-decelerate);
+}
+
+@keyframes panelSlideIn {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: translateX(0); }
 }
 
 /* AppBar text field cleanup */

@@ -6,6 +6,7 @@ using NivoTask.Api.Models;
 using NivoTask.Shared.Dtos.Boards;
 using NivoTask.Shared.Dtos.Columns;
 using Microsoft.AspNetCore.Authorization;
+using NivoTask.Shared.Dtos.Labels;
 using NivoTask.Shared.Dtos.Tasks;
 
 namespace NivoTask.Api.Controllers;
@@ -83,6 +84,15 @@ public class BoardsController : ControllerBase
                 ColumnId = t.ColumnId,
                 SubTaskCount = t.SubTasks.Count,
                 CompletedSubTaskCount = t.SubTasks.Count(s => s.IsDone),
+                Priority = t.Priority,
+                DueDate = t.DueDate,
+                CoverColor = t.CoverColor,
+                Labels = t.TaskLabels.Select(tl => new LabelResponse
+                {
+                    Id = tl.Label.Id,
+                    Name = tl.Label.Name,
+                    Color = tl.Label.Color
+                }).ToList(),
                 SubTasks = t.SubTasks.OrderBy(s => s.SortOrder).Select(s => new BoardSubTaskInfo
                 {
                     Id = s.Id,
@@ -147,6 +157,8 @@ public class BoardsController : ControllerBase
         board.Name = request.Name;
         board.Color = request.Color;
         board.Icon = request.Icon;
+        board.BackgroundType = request.BackgroundType;
+        board.BackgroundValue = request.BackgroundValue;
 
         await _db.SaveChangesAsync();
         return NoContent();
@@ -175,6 +187,8 @@ public class BoardsController : ControllerBase
         Color = board.Color,
         Icon = board.Icon,
         CreatedAt = board.CreatedAt,
+        BackgroundType = board.BackgroundType,
+        BackgroundValue = board.BackgroundValue,
         Columns = board.Columns
             .OrderBy(c => c.SortOrder)
             .Select(c => new ColumnResponse

@@ -40,7 +40,10 @@ builder.Services.AddScoped<BoardService>();
 builder.Services.AddScoped<TaskService>();
 builder.Services.AddScoped<ColumnService>();
 builder.Services.AddScoped<LocalStorageService>();
+builder.Services.AddScoped<ThemeService>();
 builder.Services.AddSingleton<TimerStateService>();
 builder.Services.AddScoped<TimeEntryService>();
+builder.Services.AddScoped<LabelService>();
+builder.Services.AddScoped<SetupService>();
 
 await builder.Build().RunAsync();

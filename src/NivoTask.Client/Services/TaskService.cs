@@ -55,4 +55,7 @@ public class TaskService
         var response = await _http.DeleteAsync($"api/tasks/{taskId}");
         response.EnsureSuccessStatusCode();
     }
+
+    public async Task<List<ActivityEntryResponse>> GetActivityAsync(int taskId)
+        => await _http.GetFromJsonAsync<List<ActivityEntryResponse>>($"api/tasks/{taskId}/activity") ?? [];
 }

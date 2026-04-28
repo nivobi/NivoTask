@@ -1,11 +1,38 @@
 @using NivoTask.Client.Models
 @using NivoTask.Shared.Dtos.Tasks
+@implements IDisposable
 @inject TaskService TaskService
+@inject TimerStateService TimerState
 
-<div class="task-card" @onclick="HandleClick">
+<div class="task-card @(HasActiveTimer ? "timer-active" : "") @(Item.JustCompleted ? "just-completed" : "")" @onclick="HandleClick">
+    @if (!string.IsNullOrEmpty(Item.CoverColor))
+    {
+        <div class="task-card-cover" style="background: @Item.CoverColor;"></div>
+    }
+
+    @if (Item.Labels.Count > 0)
+    {
+        <div class="task-card-labels">
+            @foreach (var label in Item.Labels.Take(5))
+            {
+                <div class="label-bar" style="background: @label.Color;" title="@label.Name"></div>
+            }
+        </div>
+    }
+
+    @if (Item.Priority is > 0)
+    {
+        <div class="priority-badge priority-@Item.Priority">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/>
+            </svg>
+            <span>@(Item.Priority switch { 3 => "High", 2 => "Medium", 1 => "Low", _ => "" })</span>
+        </div>
+    }
+
     <span class="task-card-title">@Item.Title</span>
 
-    @if (Item.SubTasks.Count > 0)
+    @if (!IsCompact && Item.SubTasks.Count > 0)
     {
         <div class="task-card-checklist">
             @foreach (var sub in Item.SubTasks.Take(5))
@@ -31,9 +58,18 @@
         </div>
     }
 
-    @if (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0)
+    @if (!IsCompact && (Item.SubTaskCount > 0 || Item.TotalTimeSeconds > 0 || HasActiveTimer || Item.DueDate.HasValue))
     {
         <div class="task-card-meta">
+            @if (Item.DueDate.HasValue)
+            {
+                <div class="task-card-badge due-date @DueDateClass">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    <span>@FormatDueDate(Item.DueDate.Value)</span>
+                </div>
+            }
             @if (Item.SubTaskCount > 0)
             {
                 <div class="task-card-badge @(Item.CompletedSubTaskCount == Item.SubTaskCount && Item.SubTaskCount > 0 ? "complete" : "")">
@@ -43,13 +79,17 @@
                     <span>@Item.SubTaskProgress</span>
                 </div>
             }
-            @if (Item.TotalTimeSeconds > 0)
+            @if (Item.TotalTimeSeconds > 0 || HasActiveTimer)
             {
-                <div class="task-card-badge">
+                <div class="task-card-badge @(HasActiveTimer ? "timer-running" : "")">
+                    @if (HasActiveTimer)
+                    {
+                        <div class="pulse-dot"></div>
+                    }
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
                     </svg>
-                    <span>@Item.FormattedTime</span>
+                    <span>@LiveFormattedTime</span>
                 </div>
             }
         </div>
@@ -59,6 +99,32 @@
 @code {
     [Parameter] public BoardTaskItem Item { get; set; } = null!;
     [Parameter] public EventCallback<int> OnTaskClicked { get; set; }
+    [Parameter] public bool IsCompact { get; set; }
+
+    private bool HasActiveTimer => TimerState.IsRunning
+        && Item.SubTasks.Any(st => st.Id == TimerState.ActiveTaskId);
+
+    private string LiveFormattedTime
+    {
+        get
+        {
+            var secs = HasActiveTimer
+                ? Item.TotalTimeSeconds + TimerState.ElapsedSeconds
+                : Item.TotalTimeSeconds;
+            if (secs <= 0) return "";
+            var h = secs / 3600;
+            var m = (secs % 3600) / 60;
+            if (h > 0) return $"{h}h {m:D2}m";
+            if (m > 0) return $"{m}m";
+            return $"{secs}s";
+        }
+    }
+
+    protected override void OnInitialized()
+        => TimerState.OnTimerChanged += HandleTimerChanged;
+
+    private async void HandleTimerChanged()
+        => await InvokeAsync(StateHasChanged);
 
     private async Task HandleClick()
     {
@@ -84,4 +150,30 @@
             StateHasChanged();
         }
     }
+
+    private string DueDateClass
+    {
+        get
+        {
+            if (!Item.DueDate.HasValue) return "";
+            var date = Item.DueDate.Value.Date;
+            var today = DateTime.UtcNow.Date;
+            if (date < today) return "overdue";
+            if (date == today) return "due-today";
+            return "";
+        }
+    }
+
+    private static string FormatDueDate(DateTime date)
+    {
+        var d = date.Date;
+        var today = DateTime.UtcNow.Date;
+        if (d == today) return "Today";
+        if (d == today.AddDays(1)) return "Tomorrow";
+        if (d == today.AddDays(-1)) return "Yesterday";
+        return d.Year == today.Year ? d.ToString("MMM d") : d.ToString("MMM d, yyyy");
+    }
+
+    public void Dispose()
+        => TimerState.OnTimerChanged -= HandleTimerChanged;
 }

@@ -12,6 +12,9 @@ public class AppDbContext : IdentityDbContext<AppUser>
     public DbSet<BoardColumn> BoardColumns => Set<BoardColumn>();
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<TimeEntry> TimeEntries => Set<TimeEntry>();
+    public DbSet<Label> Labels => Set<Label>();
+    public DbSet<TaskLabel> TaskLabels => Set<TaskLabel>();
+    public DbSet<ActivityEntry> ActivityEntries => Set<ActivityEntry>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -49,6 +52,44 @@ public class AppDbContext : IdentityDbContext<AppUser>
              .IsRequired(false);
         });
 
+        builder.Entity<Label>(e =>
+        {
+            e.Property(l => l.Name).HasMaxLength(50);
+            e.Property(l => l.Color).HasMaxLength(20);
+
+            e.HasOne(l => l.Board)
+             .WithMany(b => b.Labels)
+             .HasForeignKey(l => l.BoardId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TaskLabel>(e =>
+        {
+            e.HasKey(tl => new { tl.TaskId, tl.LabelId });
+
+            e.HasOne(tl => tl.Task)
+             .WithMany(t => t.TaskLabels)
+             .HasForeignKey(tl => tl.TaskId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(tl => tl.Label)
+             .WithMany(l => l.TaskLabels)
+             .HasForeignKey(tl => tl.LabelId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ActivityEntry>(e =>
+        {
+            e.Property(a => a.Detail).HasMaxLength(500);
+
+            e.HasOne(a => a.Task)
+             .WithMany()
+             .HasForeignKey(a => a.TaskId)
+             .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(a => new { a.TaskId, a.CreatedAt });
+        });
+
         builder.Entity<TimeEntry>(e =>
         {
             e.HasOne(te => te.Task)
@@ -61,15 +102,15 @@ public class AppDbContext : IdentityDbContext<AppUser>
              .HasForeignKey(te => te.UserId)
              .OnDelete(DeleteBehavior.Cascade);
 
-            // One active timer at a time -- partial unique index
-            // Only apply filtered unique index for MySQL; SQLite ignores/misapplies HasFilter
-            if (Database.ProviderName != "Microsoft.EntityFrameworkCore.Sqlite")
-            {
-                e.HasIndex(te => te.UserId)
-                 .HasFilter("`StartTime` IS NOT NULL AND `EndTime` IS NULL")
-                 .IsUnique()
-                 .HasDatabaseName("IX_TimeEntries_ActiveTimer");
-            }
+            // One active timer per user — MySQL doesn't support filtered indexes.
+            // Use a stored generated column that is non-null only for active timers,
+            // then unique index on (UserId, ActiveTimerFlag). MySQL skips NULLs in unique.
+            e.Property<bool?>("ActiveTimerFlag")
+             .HasComputedColumnSql("CASE WHEN `StartTime` IS NOT NULL AND `EndTime` IS NULL THEN TRUE ELSE NULL END", stored: true);
+
+            e.HasIndex("UserId", "ActiveTimerFlag")
+             .IsUnique()
+             .HasDatabaseName("IX_TimeEntries_ActiveTimer");
         });
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NivoTask.Api.Data;
 using NivoTask.Api.Models;
 using Microsoft.AspNetCore.Authorization;
+using NivoTask.Shared.Dtos.Labels;
 using NivoTask.Shared.Dtos.Tasks;
 
 namespace NivoTask.Api.Controllers;
@@ -37,12 +38,18 @@ public class TasksController : ControllerBase
         {
             Title = request.Title,
             Description = request.Description,
+            Priority = request.Priority,
+            DueDate = request.DueDate,
+            CoverColor = request.CoverColor,
             ColumnId = columnId,
             ParentTaskId = null,
             SortOrder = maxSort + SortGap
         };
 
         _db.Tasks.Add(task);
+        await _db.SaveChangesAsync();
+
+        LogActivity(task.Id, ActivityAction.Created, $"Created \"{task.Title}\"");
         await _db.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetTask), new { taskId = task.Id }, ToTaskResponse(task));
@@ -55,6 +62,7 @@ public class TasksController : ControllerBase
 
         var task = await _db.Tasks
             .Include(t => t.SubTasks.OrderBy(s => s.SortOrder))
+            .Include(t => t.TaskLabels).ThenInclude(tl => tl.Label)
             .Include(t => t.Column)
             .ThenInclude(c => c.Board)
             .FirstOrDefaultAsync(t => t.Id == taskId && t.Column.Board.UserId == userId);
@@ -85,8 +93,22 @@ public class TasksController : ControllerBase
 
         if (task is null) return NotFound();
 
+        // Track changes for activity log
+        var changes = new List<string>();
+        if (task.Title != request.Title) changes.Add("title");
+        if (task.Description != request.Description) changes.Add("description");
+        if (task.Priority != request.Priority) changes.Add("priority");
+        if (task.DueDate != request.DueDate) changes.Add("due date");
+        if (task.CoverColor != request.CoverColor) changes.Add("cover color");
+
         task.Title = request.Title;
         task.Description = request.Description;
+        task.Priority = request.Priority;
+        task.DueDate = request.DueDate;
+        task.CoverColor = request.CoverColor;
+
+        if (changes.Count > 0)
+            LogActivity(taskId, ActivityAction.Updated, $"Updated {string.Join(", ", changes)}");
 
         await _db.SaveChangesAsync();
         return NoContent();
@@ -105,6 +127,8 @@ public class TasksController : ControllerBase
         if (task is null) return NotFound();
 
         task.IsDone = !task.IsDone;
+        LogActivity(taskId, task.IsDone ? ActivityAction.Completed : ActivityAction.Updated,
+            task.IsDone ? "Marked as done" : "Marked as not done");
         await _db.SaveChangesAsync();
         return Ok(new { task.IsDone });
     }
@@ -176,8 +200,13 @@ public class TasksController : ControllerBase
 
         if (!targetColumnExists) return BadRequest("Target column not found in this board");
 
+        var fromColumnName = task.Column.Name;
         task.ColumnId = request.TargetColumnId;
         task.SortOrder = request.NewSortOrder;
+
+        // Log move
+        var targetColumn = await _db.BoardColumns.FindAsync(request.TargetColumnId);
+        LogActivity(taskId, ActivityAction.Moved, $"Moved from \"{fromColumnName}\" to \"{targetColumn?.Name}\"");
 
         // D-07: Sync sub-tasks to parent's new column
         foreach (var sub in task.SubTasks)
@@ -245,7 +274,10 @@ public class TasksController : ControllerBase
         ColumnId = t.ColumnId,
         ParentTaskId = t.ParentTaskId,
         SubTaskCount = t.SubTasks?.Count ?? 0,
-        IsDone = t.IsDone
+        IsDone = t.IsDone,
+        Priority = t.Priority,
+        DueDate = t.DueDate,
+        CoverColor = t.CoverColor
     };
 
     private static TaskDetailResponse ToTaskDetailResponse(TaskItem t, int totalTimeSeconds = 0) => new()
@@ -257,10 +289,56 @@ public class TasksController : ControllerBase
         CreatedAt = t.CreatedAt,
         ColumnId = t.ColumnId,
         ParentTaskId = t.ParentTaskId,
+        Priority = t.Priority,
+        DueDate = t.DueDate,
+        CoverColor = t.CoverColor,
+        Labels = t.TaskLabels?.Select(tl => new LabelResponse
+        {
+            Id = tl.Label.Id,
+            Name = tl.Label.Name,
+            Color = tl.Label.Color
+        }).ToList() ?? [],
         SubTasks = t.SubTasks?
             .OrderBy(s => s.SortOrder)
             .Select(s => ToTaskResponse(s))
             .ToList() ?? [],
         TotalTimeSeconds = totalTimeSeconds
     };
+
+    [HttpGet("tasks/{taskId}/activity")]
+    public async Task<ActionResult<List<ActivityEntryResponse>>> GetActivity(int taskId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var taskExists = await _db.Tasks
+            .Include(t => t.Column).ThenInclude(c => c.Board)
+            .AnyAsync(t => t.Id == taskId && t.Column.Board.UserId == userId);
+
+        if (!taskExists) return NotFound();
+
+        var entries = await _db.ActivityEntries
+            .Where(a => a.TaskId == taskId)
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(50)
+            .Select(a => new ActivityEntryResponse
+            {
+                Id = a.Id,
+                Action = a.Action.ToString(),
+                Detail = a.Detail,
+                CreatedAt = a.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(entries);
+    }
+
+    private void LogActivity(int taskId, ActivityAction action, string? detail = null)
+    {
+        _db.ActivityEntries.Add(new ActivityEntry
+        {
+            TaskId = taskId,
+            Action = action,
+            Detail = detail
+        });
+    }
 }

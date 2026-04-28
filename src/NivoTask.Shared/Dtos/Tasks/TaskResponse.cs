@@ -11,4 +11,7 @@ public class TaskResponse
     public int? ParentTaskId { get; set; }
     public int SubTaskCount { get; set; }
     public bool IsDone { get; set; }
+    public int? Priority { get; set; }
+    public DateTime? DueDate { get; set; }
+    public string? CoverColor { get; set; }
 }

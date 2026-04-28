@@ -9,5 +9,7 @@ public class BoardResponse
     public string? Color { get; set; }
     public string? Icon { get; set; }
     public DateTime CreatedAt { get; set; }
+    public int? BackgroundType { get; set; }
+    public string? BackgroundValue { get; set; }
     public List<ColumnResponse> Columns { get; set; } = [];
 }

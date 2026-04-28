@@ -1,5 +1,96 @@
+/* ── Apple-style animation system ── */
+:root {
+    --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1.0);
+    --ease-decelerate: cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1.0);
+    --duration-fast: 0.2s;
+    --duration-normal: 0.3s;
+    --duration-slow: 0.4s;
+    --duration-entrance: 0.35s;
+}
+
+@keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeScaleIn {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes columnSlideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes checkPop {
+    0% { transform: scale(0.8); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+@keyframes completeCelebration {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.4); }
+    30% { transform: scale(1.02); box-shadow: 0 0 0 6px rgba(48, 209, 88, 0.15); }
+    60% { transform: scale(0.99); box-shadow: 0 0 0 10px rgba(48, 209, 88, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(48, 209, 88, 0); }
+}
+
+/* Global MudBlazor overrides */
+.mud-dialog {
+    animation: fadeScaleIn var(--duration-entrance) var(--ease-decelerate) !important;
+}
+
+.mud-drawer {
+    transition: width var(--duration-normal) var(--ease-standard),
+                transform var(--duration-normal) var(--ease-standard) !important;
+}
+
+.mud-button-root:active {
+    transform: scale(0.97);
+    transition: transform 0.1s var(--ease-standard);
+}
+
+.mud-icon-button:active {
+    transform: scale(0.92);
+    transition: transform 0.08s var(--ease-standard);
+}
+
+.mud-input-outlined .mud-input-outlined-border {
+    transition: border-color var(--duration-fast) var(--ease-standard) !important;
+}
+
+/* Board column entrance stagger */
+.board-column {
+    animation: columnSlideIn var(--duration-entrance) var(--ease-decelerate) both;
+}
+.board-column:nth-child(1) { animation-delay: 0s; }
+.board-column:nth-child(2) { animation-delay: 0.06s; }
+.board-column:nth-child(3) { animation-delay: 0.1s; }
+.board-column:nth-child(4) { animation-delay: 0.14s; }
+.board-column:nth-child(5) { animation-delay: 0.18s; }
+.board-column:nth-child(n+6) { animation-delay: 0.2s; }
+
+/* Card entrance stagger within drop zones */
+.mud-drop-zone > *:nth-child(1) { animation-delay: 0s; }
+.mud-drop-zone > *:nth-child(2) { animation-delay: 0.04s; }
+.mud-drop-zone > *:nth-child(3) { animation-delay: 0.06s; }
+.mud-drop-zone > *:nth-child(4) { animation-delay: 0.08s; }
+.mud-drop-zone > *:nth-child(5) { animation-delay: 0.1s; }
+.mud-drop-zone > *:nth-child(n+6) { animation-delay: 0.12s; }
+
+/* Reduced motion safety */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
 html, body {
-    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
 }
 
 h1:focus {
@@ -85,7 +176,7 @@ a, .btn-link {
     }
 
         .loading-progress circle:last-child {
-            stroke: #1b6ec2;
+            stroke: #007AFF;
             stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
             transition: stroke-dasharray 0.05s ease-in-out;
         }

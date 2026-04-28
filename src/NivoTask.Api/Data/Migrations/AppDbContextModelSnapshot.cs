@@ -154,6 +154,34 @@ namespace NivoTask.Api.Data.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("NivoTask.Api.Models.ActivityEntry", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Action")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<int>("TaskId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TaskId", "CreatedAt");
+
+                    b.ToTable("ActivityEntries");
+                });
+
             modelBuilder.Entity("NivoTask.Api.Models.AppUser", b =>
                 {
                     b.Property<string>("Id")
@@ -226,6 +254,12 @@ namespace NivoTask.Api.Data.Migrations
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int?>("BackgroundType")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BackgroundValue")
+                        .HasColumnType("longtext");
+
                     b.Property<string>("Color")
                         .HasColumnType("longtext");
 
@@ -280,6 +314,34 @@ namespace NivoTask.Api.Data.Migrations
                     b.ToTable("BoardColumns");
                 });
 
+            modelBuilder.Entity("NivoTask.Api.Models.Label", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("BoardId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Color")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("varchar(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BoardId");
+
+                    b.ToTable("Labels");
+                });
+
             modelBuilder.Entity("NivoTask.Api.Models.TaskItem", b =>
                 {
                     b.Property<int>("Id")
@@ -291,16 +353,25 @@ namespace NivoTask.Api.Data.Migrations
                     b.Property<int>("ColumnId")
                         .HasColumnType("int");
 
+                    b.Property<string>("CoverColor")
+                        .HasColumnType("longtext");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime(6)");
 
                     b.Property<string>("Description")
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime?>("DueDate")
+                        .HasColumnType("datetime(6)");
+
                     b.Property<bool>("IsDone")
                         .HasColumnType("tinyint(1)");
 
                     b.Property<int?>("ParentTaskId")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("Priority")
                         .HasColumnType("int");
 
                     b.Property<int>("SortOrder")
@@ -319,6 +390,21 @@ namespace NivoTask.Api.Data.Migrations
                     b.ToTable("Tasks");
                 });
 
+            modelBuilder.Entity("NivoTask.Api.Models.TaskLabel", b =>
+                {
+                    b.Property<int>("TaskId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("LabelId")
+                        .HasColumnType("int");
+
+                    b.HasKey("TaskId", "LabelId");
+
+                    b.HasIndex("LabelId");
+
+                    b.ToTable("TaskLabels");
+                });
+
             modelBuilder.Entity("NivoTask.Api.Models.TimeEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -326,6 +412,11 @@ namespace NivoTask.Api.Data.Migrations
                         .HasColumnType("int");
 
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<bool?>("ActiveTimerFlag")
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("tinyint(1)")
+                        .HasComputedColumnSql("CASE WHEN `StartTime` IS NOT NULL AND `EndTime` IS NULL THEN TRUE ELSE NULL END", true);
 
                     b.Property<int>("DurationSeconds")
                         .HasColumnType("int");
@@ -350,10 +441,9 @@ namespace NivoTask.Api.Data.Migrations
 
                     b.HasIndex("TaskId");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex("UserId", "ActiveTimerFlag")
                         .IsUnique()
-                        .HasDatabaseName("IX_TimeEntries_ActiveTimer")
-                        .HasFilter("`StartTime` IS NOT NULL AND `EndTime` IS NULL");
+                        .HasDatabaseName("IX_TimeEntries_ActiveTimer");
 
                     b.ToTable("TimeEntries");
                 });
@@ -409,6 +499,17 @@ namespace NivoTask.Api.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NivoTask.Api.Models.ActivityEntry", b =>
+                {
+                    b.HasOne("NivoTask.Api.Models.TaskItem", "Task")
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("NivoTask.Api.Models.Board", b =>
                 {
                     b.HasOne("NivoTask.Api.Models.AppUser", "User")
@@ -424,6 +525,17 @@ namespace NivoTask.Api.Data.Migrations
                 {
                     b.HasOne("NivoTask.Api.Models.Board", "Board")
                         .WithMany("Columns")
+                        .HasForeignKey("BoardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Board");
+                });
+
+            modelBuilder.Entity("NivoTask.Api.Models.Label", b =>
+                {
+                    b.HasOne("NivoTask.Api.Models.Board", "Board")
+                        .WithMany("Labels")
                         .HasForeignKey("BoardId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -449,6 +561,25 @@ namespace NivoTask.Api.Data.Migrations
                     b.Navigation("ParentTask");
                 });
 
+            modelBuilder.Entity("NivoTask.Api.Models.TaskLabel", b =>
+                {
+                    b.HasOne("NivoTask.Api.Models.Label", "Label")
+                        .WithMany("TaskLabels")
+                        .HasForeignKey("LabelId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NivoTask.Api.Models.TaskItem", "Task")
+                        .WithMany("TaskLabels")
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Label");
+
+                    b.Navigation("Task");
+                });
+
             modelBuilder.Entity("NivoTask.Api.Models.TimeEntry", b =>
                 {
                     b.HasOne("NivoTask.Api.Models.TaskItem", "Task")
@@ -471,6 +602,8 @@ namespace NivoTask.Api.Data.Migrations
             modelBuilder.Entity("NivoTask.Api.Models.Board", b =>
                 {
                     b.Navigation("Columns");
+
+                    b.Navigation("Labels");
                 });
 
             modelBuilder.Entity("NivoTask.Api.Models.BoardColumn", b =>
@@ -478,9 +611,16 @@ namespace NivoTask.Api.Data.Migrations
                     b.Navigation("Tasks");
                 });
 
+            modelBuilder.Entity("NivoTask.Api.Models.Label", b =>
+                {
+                    b.Navigation("TaskLabels");
+                });
+
             modelBuilder.Entity("NivoTask.Api.Models.TaskItem", b =>
                 {
                     b.Navigation("SubTasks");
+
+                    b.Navigation("TaskLabels");
 
                     b.Navigation("TimeEntries");
                 });

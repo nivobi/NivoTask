@@ -11,6 +11,14 @@ public class TestWebApplicationFactory : WebApplicationFactory<Program>
 {
     private SqliteConnection? _connection;
 
+    public TestWebApplicationFactory()
+    {
+        // Force normal mode (skip setup wizard) — must be set before Program.cs runs
+        Environment.SetEnvironmentVariable("SetupComplete", "true");
+        Environment.SetEnvironmentVariable("SeedUser__Email", "admin@nivotask.local");
+        Environment.SetEnvironmentVariable("SeedUser__Password", "Admin12345678");
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureServices(services =>

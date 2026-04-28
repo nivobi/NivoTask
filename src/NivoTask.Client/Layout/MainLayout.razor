@@ -1,12 +1,14 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject IJSRuntime JS
 
-<MudThemeProvider Theme="_theme" />
+<MudThemeProvider Theme="_theme" @bind-IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="0" Style="border-bottom: 1px solid rgba(0,0,0,0.08); background: rgba(255,255,255,0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
+    <MudAppBar Elevation="0" Class="app-bar-glass">
         <AuthorizeView>
             <Authorized>
                 <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
@@ -17,12 +19,16 @@
             @(_currentBoardName ?? "NivoTask")
         </MudText>
         <MudSpacer />
-        <TimerChip OnNavigateToTask="OpenDetailPanel" />
+        <TimerChip OnNavigateToTask="OpenDetailPanel" OnTimerStopped="HandleTimerStopped" />
         @if (_currentBoardId > 0)
         {
             <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Default" Size="Size.Small"
                            OnClick="OnSettingsClicked" Style="opacity: 0.6;" />
         }
+        <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Outlined.LightMode : Icons.Material.Outlined.DarkMode)"
+                       Color="Color.Default" Size="Size.Small"
+                       OnClick="ToggleDarkMode"
+                       Style="opacity: 0.6;" />
         <AuthorizeView>
             <Authorized>
                 <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
@@ -40,14 +46,14 @@
                        MiniWidth="56px"
                        Width="260px"
                        Elevation="0"
-                       Style="border-right: 1px solid rgba(0,0,0,0.06);">
+                       Class="drawer-border">
                 <BoardSidebar IsExpanded="_drawerOpen"
                               ActiveBoardId="_currentBoardId"
                               OnBoardSelected="HandleBoardSelected" />
             </MudDrawer>
         </Authorized>
     </AuthorizeView>
-    <MudMainContent Class="pa-4" Style="background: var(--mud-palette-background); padding-top: 70px !important;">
+    <MudMainContent Class="pa-5" Style="background: var(--mud-palette-background); padding-top: 76px !important;">
         <CascadingValue Value="this" IsFixed="true">
             @Body
         </CascadingValue>
@@ -58,66 +64,175 @@
                Width="480px"
                Elevation="0"
                ClipMode="DrawerClipMode.Always"
-               Style="box-shadow: -8px 0 32px rgba(0,0,0,0.08);">
+               Class="detail-panel-shadow">
         @if (_selectedTaskId > 0)
         {
-            <TaskDetailPanel TaskId="_selectedTaskId" OnClose="CloseDetailPanel" OnDeleted="HandleTaskDeleted" />
+            <TaskDetailPanel TaskId="_selectedTaskId" BoardId="_currentBoardId" OnClose="CloseDetailPanel" OnDeleted="HandleTaskDeleted" OnTaskUpdated="HandleTaskUpdated" />
         }
     </MudDrawer>
 </MudLayout>
+
+@if (_showShortcutsHelp)
+{
+    <div class="shortcuts-overlay" @onclick="() => _showShortcutsHelp = false">
+        <div class="shortcuts-panel" @onclick:stopPropagation="true">
+            <div class="d-flex justify-space-between align-center mb-4">
+                <MudText Typo="Typo.h6">Keyboard Shortcuts</MudText>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                               OnClick="() => _showShortcutsHelp = false" />
+            </div>
+            <div class="shortcuts-grid">
+                <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+                <div class="shortcut-row"><kbd>Esc</kbd><span>Close panel / dialog</span></div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .shortcuts-overlay {
+        position: fixed; inset: 0; z-index: 9999;
+        background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+        display: flex; align-items: center; justify-content: center;
+        animation: fadeScaleIn 0.2s var(--ease-decelerate);
+    }
+    .shortcuts-panel {
+        background: var(--mud-palette-surface); border-radius: 16px;
+        padding: 28px; min-width: 320px; max-width: 400px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+    .shortcuts-grid { display: flex; flex-direction: column; gap: 8px; }
+    .shortcut-row { display: flex; align-items: center; gap: 12px; }
+    .shortcut-row kbd {
+        background: var(--mud-palette-background-gray); border-radius: 6px;
+        padding: 4px 10px; font-size: 0.75rem; font-weight: 600;
+        min-width: 40px; text-align: center; font-family: inherit;
+    }
+    .shortcut-row span { font-size: 0.8125rem; opacity: 0.7; }
+    .app-bar-glass {
+        border-bottom: 1px solid var(--mud-palette-divider);
+        background: var(--mud-palette-appbar-background) !important;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+    }
+    .drawer-border {
+        border-right: 1px solid var(--mud-palette-divider);
+    }
+    .detail-panel-shadow {
+        box-shadow: -8px 0 32px var(--mud-palette-overlay-dark) !important;
+    }
+</style>
 
 @code {
     [Inject] private IAccountManagement AccountManagement { get; set; } = null!;
     [Inject] private NavigationManager Navigation { get; set; } = null!;
     [Inject] private BoardService BoardService { get; set; } = null!;
+    [Inject] private TaskService TaskService { get; set; } = null!;
     [Inject] private IDialogService DialogService { get; set; } = null!;
     [Inject] private TimerStateService TimerState { get; set; } = null!;
     [Inject] private TimeEntryService TimeEntryService { get; set; } = null!;
+    [Inject] private ThemeService _themeService { get; set; } = null!;
 
     private readonly MudTheme _theme = new()
     {
         PaletteLight = new PaletteLight
         {
-            Primary = "#1a1a1a",
-            Secondary = "#6366f1",
-            Background = "#f8f8fa",
+            Primary = "#1d1d1f",
+            PrimaryContrastText = "#ffffff",
+            Secondary = "#007AFF",
+            Background = "#f5f5f7",
             Surface = "#ffffff",
-            AppbarBackground = "#ffffff",
-            AppbarText = "#1a1a1a",
+            AppbarBackground = "rgba(255,255,255,0.82)",
+            AppbarText = "#1d1d1f",
             DrawerBackground = "#ffffff",
-            TextPrimary = "#1a1a1a",
-            TextSecondary = "rgba(0,0,0,0.5)",
-            ActionDefault = "rgba(0,0,0,0.54)",
-            ActionDisabled = "rgba(0,0,0,0.26)",
-            Divider = "rgba(0,0,0,0.06)",
+            TextPrimary = "#1d1d1f",
+            TextSecondary = "rgba(0,0,0,0.45)",
+            ActionDefault = "rgba(0,0,0,0.48)",
+            ActionDisabled = "rgba(0,0,0,0.22)",
+            Divider = "rgba(0,0,0,0.04)",
+            BackgroundGray = "#f0f0f2",
+            OverlayDark = "rgba(0,0,0,0.08)",
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#f5f5f7",
+            PrimaryContrastText = "#000000",
+            Secondary = "#0A84FF",
+            Background = "#000000",
+            Surface = "#1c1c1e",
+            AppbarBackground = "rgba(0,0,0,0.82)",
+            AppbarText = "#f5f5f7",
+            DrawerBackground = "#1c1c1e",
+            TextPrimary = "rgba(255,255,255,0.92)",
+            TextSecondary = "rgba(255,255,255,0.55)",
+            ActionDefault = "rgba(255,255,255,0.55)",
+            ActionDisabled = "rgba(255,255,255,0.25)",
+            Divider = "rgba(255,255,255,0.06)",
+            Black = "#2c2c2e",
+            BackgroundGray = "#2c2c2e",
+            OverlayDark = "rgba(0,0,0,0.35)",
         },
         Typography = new Typography
         {
             Default = new DefaultTypography
             {
-                FontFamily = new[] { "Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif" },
+                FontFamily = new[] { "-apple-system", "BlinkMacSystemFont", "SF Pro Text", "SF Pro Display", "Inter", "Segoe UI", "Roboto", "Helvetica Neue", "Arial", "sans-serif" },
                 LetterSpacing = "-0.011em",
             },
-            H5 = new H5Typography { FontWeight = "500", FontSize = "1.5rem", LetterSpacing = "-0.02em" },
-            H6 = new H6Typography { FontWeight = "600", FontSize = "1.125rem", LetterSpacing = "-0.015em" },
-            Subtitle1 = new Subtitle1Typography { FontWeight = "600", FontSize = "1rem", LetterSpacing = "-0.01em" },
-            Body1 = new Body1Typography { FontSize = "0.9375rem", LetterSpacing = "-0.01em" },
-            Body2 = new Body2Typography { FontSize = "0.8125rem", LetterSpacing = "-0.006em" },
+            H5 = new H5Typography { FontWeight = "600", FontSize = "1.5rem", LetterSpacing = "-0.022em", LineHeight = "1.2" },
+            H6 = new H6Typography { FontWeight = "600", FontSize = "1.125rem", LetterSpacing = "-0.017em", LineHeight = "1.3" },
+            Subtitle1 = new Subtitle1Typography { FontWeight = "600", FontSize = "1rem", LetterSpacing = "-0.014em" },
+            Body1 = new Body1Typography { FontSize = "0.9375rem", LetterSpacing = "-0.01em", LineHeight = "1.53" },
+            Body2 = new Body2Typography { FontSize = "0.8125rem", LetterSpacing = "-0.006em", LineHeight = "1.5" },
             Button = new ButtonTypography { FontWeight = "500", FontSize = "0.8125rem", TextTransform = "none", LetterSpacing = "-0.006em" },
         },
         LayoutProperties = new LayoutProperties
         {
-            DefaultBorderRadius = "10px",
-            AppbarHeight = "52px",
+            DefaultBorderRadius = "12px",
+            AppbarHeight = "56px",
         }
     };
 
+    private bool _isDarkMode;
     private bool _drawerOpen = true;
     private string? _currentBoardName;
     private int _currentBoardId;
     private bool _detailPanelOpen;
     private int _selectedTaskId;
     private bool _timerLoaded;
+    private bool _showShortcutsHelp;
+    private DotNetObjectReference<MainLayout>? _keyboardRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Initialize theme from localStorage
+            await _themeService.InitializeAsync();
+            _isDarkMode = _themeService.IsDarkMode;
+            _themeService.OnThemeChanged += HandleThemeChanged;
+            StateHasChanged();
+
+            // Init keyboard shortcuts
+            _keyboardRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("NivoTaskKeyboard.init", _keyboardRef);
+
+            if (!_timerLoaded)
+            {
+                _timerLoaded = true;
+                try
+                {
+                    var active = await TimeEntryService.GetActiveTimerAsync();
+                    if (active is not null)
+                    {
+                        TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                        StateHasChanged();
+                    }
+                }
+                catch { }
+            }
+        }
+    }
 
     public void SetBoardContext(string boardName, int boardId)
     {
@@ -127,6 +242,18 @@
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task ToggleDarkMode()
+    {
+        await _themeService.ToggleAsync();
+        _isDarkMode = _themeService.IsDarkMode;
+    }
+
+    private async void HandleThemeChanged()
+    {
+        _isDarkMode = _themeService.IsDarkMode;
+        await InvokeAsync(StateHasChanged);
+    }
 
     private void HandleBoardSelected(int boardId)
     {
@@ -158,6 +285,8 @@
             { x => x.BoardName, board.Name },
             { x => x.BoardColor, board.Color },
             { x => x.BoardIcon, board.Icon },
+            { x => x.BoardBackgroundType, board.BackgroundType },
+            { x => x.BoardBackgroundValue, board.BackgroundValue },
             { x => x.Columns, columnModels }
         };
 
@@ -200,6 +329,27 @@
         StateHasChanged();
     }
 
+    // Event for board to subscribe to when task metadata changes in detail panel
+    public event Action<int>? OnTaskMetadataChanged;
+
+    private void HandleTaskUpdated(int taskId)
+    {
+        OnTaskMetadataChanged?.Invoke(taskId);
+    }
+
+    private async Task HandleTimerStopped(int subtaskId)
+    {
+        StateHasChanged();
+        // Find parent task to refresh board card
+        try
+        {
+            var detail = await TaskService.GetTaskDetailAsync(subtaskId);
+            if (detail?.ParentTaskId is not null)
+                OnTaskMetadataChanged?.Invoke(detail.ParentTaskId.Value);
+        }
+        catch { }
+    }
+
     private void HandleTaskDeleted(int taskId)
     {
         CloseDetailPanel();
@@ -207,21 +357,29 @@
         Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    [JSInvokable]
+    public async Task OnKeyPressed(string key, bool ctrlOrMeta, bool shift)
     {
-        if (firstRender && !_timerLoaded)
+        switch (key)
         {
-            _timerLoaded = true;
-            try
-            {
-                var active = await TimeEntryService.GetActiveTimerAsync();
-                if (active is not null)
-                {
-                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
-                    StateHasChanged();
-                }
-            }
-            catch { }
+            case "Escape":
+                if (_showShortcutsHelp) { _showShortcutsHelp = false; StateHasChanged(); }
+                else if (_detailPanelOpen) CloseDetailPanel();
+                break;
+            case "?":
+                if (shift) { _showShortcutsHelp = !_showShortcutsHelp; StateHasChanged(); }
+                break;
+            case "k" when ctrlOrMeta:
+                // Focus search — handled by Board.razor via JS
+                break;
         }
+        await Task.CompletedTask;
+    }
+
+    public void Dispose()
+    {
+        _themeService.OnThemeChanged -= HandleThemeChanged;
+        try { _ = JS.InvokeVoidAsync("NivoTaskKeyboard.dispose"); } catch { }
+        _keyboardRef?.Dispose();
     }
 }

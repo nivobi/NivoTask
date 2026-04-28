@@ -1,17 +1,21 @@
 @page "/boards/{BoardId:int}"
 @attribute [Authorize]
+@implements IDisposable
 @inject BoardService BoardService
 @inject TaskService TaskService
+@inject LabelService LabelService
 @inject LocalStorageService LocalStorage
+@inject ColumnService ColumnService
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 @inject NavigationManager Navigation
 
 @if (_loading)
 {
-    <div class="d-flex flex-row" style="gap: 12px; padding: 4px; overflow-x: auto;">
+    <div class="d-flex flex-row" style="gap: 16px; padding: 4px; overflow-x: auto;">
         @for (int i = 0; i < 3; i++)
         {
-            <div style="min-width: 280px; max-width: 280px; background: #ebecf0; border-radius: 12px; padding: 14px;">
+            <div style="min-width: 300px; max-width: 300px; background: var(--mud-palette-background-gray); border-radius: 16px; padding: 14px;">
                 <MudSkeleton SkeletonType="SkeletonType.Text" Width="50%" Height="18px" Class="mb-3"
                              Style="border-radius: 6px;" />
                 @for (int j = 0; j < 3; j++)
@@ -42,32 +46,111 @@ else if (_columns.Count == 0)
 }
 else
 {
+    <div style="@BoardBackgroundStyle">
+    @* Board toolbar — search, filters, compact toggle *@
+    <div class="d-flex align-center gap-3 flex-wrap" style="padding: 0 4px 12px; min-height: 40px;">
+        <MudTextField T="string" @bind-Value="_searchTerm" @bind-Value:after="ApplyFilters"
+                      Placeholder="Search tasks..." Variant="Variant.Outlined" Margin="Margin.Dense"
+                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" DebounceInterval="200"
+                      Style="max-width: 240px; font-size: 0.8125rem;"
+                      Clearable="true" />
+
+        @* Priority filter chips *@
+        <MudChip T="string" Size="Size.Small" OnClick="() => ToggleFilter('H')"
+                 Color="@(_filterPriority == 3 ? Color.Error : Color.Surface)"
+                 Style="@(_filterPriority == 3 ? "" : "opacity: 0.5;")">High</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="() => ToggleFilter('M')"
+                 Color="@(_filterPriority == 2 ? Color.Warning : Color.Surface)"
+                 Style="@(_filterPriority == 2 ? "" : "opacity: 0.5;")">Medium</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="() => ToggleFilter('L')"
+                 Color="@(_filterPriority == 1 ? Color.Info : Color.Surface)"
+                 Style="@(_filterPriority == 1 ? "" : "opacity: 0.5;")">Low</MudChip>
+
+        @* Due date filters *@
+        <MudChip T="string" Size="Size.Small" OnClick="@(() => ToggleDueFilter("overdue"))"
+                 Color="@(_filterDue == "overdue" ? Color.Error : Color.Surface)"
+                 Style="@(_filterDue == "overdue" ? "" : "opacity: 0.5;")">Overdue</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="@(() => ToggleDueFilter("today"))"
+                 Color="@(_filterDue == "today" ? Color.Warning : Color.Surface)"
+                 Style="@(_filterDue == "today" ? "" : "opacity: 0.5;")">Due Today</MudChip>
+
+        <div style="flex: 1;"></div>
+
+        @* Compact / Detailed toggle *@
+        <MudToggleIconButton Toggled="_compactView"
+                             ToggledChanged="HandleCompactToggle"
+                             Icon="@Icons.Material.Filled.ViewAgenda"
+                             ToggledIcon="@Icons.Material.Filled.ViewStream"
+                             Size="Size.Small" Style="opacity: 0.4;" />
+    </div>
+
     <MudDropContainer T="BoardTaskItem"
                       @ref="_dropContainer"
                       Items="_taskItems"
-                      ItemsSelector="@((item, zone) => item.ColumnIdentifier == zone)"
+                      ItemsSelector="@((item, zone) => item.ColumnIdentifier == zone && PassesFilter(item))"
                       ItemDropped="OnTaskDropped"
                       Class="d-flex flex-row flex-grow-1"
-                      Style="overflow-x: auto; gap: 12px; padding: 4px; align-items: flex-start;">
+                      Style="overflow-x: auto; gap: 16px; padding: 4px; align-items: stretch; min-height: calc(100vh - 180px);">
         <ChildContent>
             @foreach (var column in _columns)
             {
-                <div style="min-width: 280px; max-width: 280px; background: #ebecf0; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; flex-shrink: 0;">
+                <div class="board-column" style="min-width: 300px; max-width: 300px; background: var(--mud-palette-background-gray); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; flex-shrink: 0;">
                     <div class="d-flex align-center justify-space-between" style="padding: 4px 6px 8px;">
-                        <span style="font-weight: 700; font-size: 0.8125rem; color: #44546f; letter-spacing: 0;">
-                            @column.Name
-                        </span>
-                        <span style="font-size: 0.6875rem; color: #44546f; opacity: 0.5; font-weight: 500;">
-                            @_taskItems.Count(t => t.ColumnIdentifier == column.Id.ToString())
-                        </span>
+                        @if (_editingColumnId == column.Id)
+                        {
+                            <MudTextField T="string" @bind-Value="_editColumnName" Variant="Variant.Text"
+                                          AutoFocus="true" Style="font-weight: 700; font-size: 0.8125rem;"
+                                          OnKeyDown="e => HandleColumnNameKeyDown(e, column)"
+                                          OnBlur="() => SaveColumnName(column)" Margin="Margin.Dense" />
+                        }
+                        else
+                        {
+                            <span style="font-weight: 700; font-size: 0.8125rem; color: var(--mud-palette-text-secondary); letter-spacing: 0; cursor: pointer;"
+                                  @ondblclick="() => StartEditingColumnName(column)">
+                                @column.Name
+                            </span>
+                        }
+                        <div class="d-flex align-center gap-1">
+                            <span style="font-size: 0.6875rem; color: var(--mud-palette-text-secondary); opacity: 0.5; font-weight: 500;">
+                                @_taskItems.Count(t => t.ColumnIdentifier == column.Id.ToString() && PassesFilter(t))
+                            </span>
+                            <MudMenu Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small"
+                                     AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                                     Dense="true" Style="opacity: 0.3;">
+                                <MudMenuItem OnClick="() => StartEditingColumnName(column)"
+                                             Icon="@Icons.Material.Filled.Edit" IconSize="Size.Small">Rename</MudMenuItem>
+                                @if (!column.IsDone)
+                                {
+                                    <MudMenuItem OnClick="() => ToggleColumnDone(column)"
+                                                 Icon="@Icons.Material.Filled.CheckCircleOutline" IconSize="Size.Small">Mark as Done column</MudMenuItem>
+                                }
+                                else
+                                {
+                                    <MudMenuItem OnClick="() => ToggleColumnDone(column)"
+                                                 Icon="@Icons.Material.Filled.RemoveCircleOutline" IconSize="Size.Small">Unmark Done column</MudMenuItem>
+                                }
+                                <MudMenuItem OnClick="() => DeleteColumn(column)"
+                                             Icon="@Icons.Material.Filled.Delete" IconSize="Size.Small"
+                                             Disabled="@(_taskItems.Any(t => t.ColumnIdentifier == column.Id.ToString()))">Delete column</MudMenuItem>
+                            </MudMenu>
+                        </div>
                     </div>
                     <MudDropZone T="BoardTaskItem"
                                  Identifier="@column.Id.ToString()"
                                  AllowReorder="true"
                                  CanDropClass="mud-border-info"
                                  Class="d-flex flex-column flex-grow-1"
-                                 Style="min-height: 24px; overflow-y: auto; gap: 8px; padding: 2px;">
+                                 Style="min-height: 120px; overflow-y: auto; gap: 10px; padding: 4px 2px;">
                     </MudDropZone>
+                    @if (!_taskItems.Any(t => t.ColumnIdentifier == column.Id.ToString() && PassesFilter(t)))
+                    {
+                        <div style="text-align: center; padding: 20px 8px 8px; opacity: 0.25;">
+                            <MudText Typo="Typo.body2" Style="font-size: 0.75rem; font-weight: 500;">
+                                @GetEmptyColumnMessage(column)
+                            </MudText>
+                        </div>
+                    }
                     <div style="margin-top: 8px;">
                         <QuickAddTask BoardId="BoardId" ColumnId="@column.Id" OnTaskCreated="HandleTaskCreated" />
                     </div>
@@ -75,9 +158,10 @@ else
             }
         </ChildContent>
         <ItemRenderer>
-            <TaskCard Item="@context" OnTaskClicked="HandleTaskClicked" />
+            <TaskCard Item="@context" OnTaskClicked="HandleTaskClicked" IsCompact="_compactView" />
         </ItemRenderer>
     </MudDropContainer>
+    </div>
 }
 
 @code {
@@ -92,10 +176,60 @@ else
 
     private const int SortGap = 1000;
 
+    // Filters
+    private string _searchTerm = "";
+    private int? _filterPriority;
+    private string? _filterDue;
+    private bool _compactView;
+
+    // Column editing
+    private int _editingColumnId;
+    private string _editColumnName = "";
+
     protected override async Task OnParametersSetAsync()
     {
         Layout?.CloseDetailPanel();
         await LoadBoardAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Layout is not null)
+            Layout.OnTaskMetadataChanged += HandleTaskMetadataChanged;
+    }
+
+    private async void HandleTaskMetadataChanged(int taskId)
+    {
+        // Re-fetch board tasks to get updated metadata
+        try
+        {
+            var updatedTasks = await BoardService.GetBoardTasksAsync(BoardId);
+            var updated = updatedTasks.FirstOrDefault(t => t.Id == taskId);
+            var existing = _taskItems.FirstOrDefault(t => t.Id == taskId);
+            if (updated is not null && existing is not null)
+            {
+                existing.Title = updated.Title;
+                existing.Priority = updated.Priority;
+                existing.DueDate = updated.DueDate;
+                existing.CoverColor = updated.CoverColor;
+                existing.Labels = updated.Labels;
+                existing.SubTaskCount = updated.SubTaskCount;
+                existing.CompletedSubTaskCount = updated.CompletedSubTaskCount;
+                existing.TotalTimeSeconds = updated.TotalTimeSeconds;
+                await InvokeAsync(() =>
+                {
+                    _dropContainer?.Refresh();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch { }
+    }
+
+    public void Dispose()
+    {
+        if (Layout is not null)
+            Layout.OnTaskMetadataChanged -= HandleTaskMetadataChanged;
     }
 
     private async Task LoadBoardAsync()
@@ -120,6 +254,10 @@ else
 
             // Store as last-used board (D-03)
             await LocalStorage.SetAsync("lastBoardId", BoardId.ToString());
+
+            // Restore compact view preference
+            var compact = await LocalStorage.GetAsync("compactView");
+            _compactView = compact == "True";
         }
         catch
         {
@@ -160,6 +298,19 @@ else
                 TargetColumnId = int.Parse(dropInfo.DropzoneIdentifier),
                 NewSortOrder = newSortOrder
             });
+
+            // Completion celebration — trigger when dropped into a Done column
+            var targetCol = _columns.FirstOrDefault(c => c.Id.ToString() == dropInfo.DropzoneIdentifier);
+            if (targetCol?.IsDone == true && previousColumn != dropInfo.DropzoneIdentifier)
+            {
+                item.JustCompleted = true;
+                StateHasChanged();
+                _ = Task.Delay(700).ContinueWith(_ =>
+                {
+                    item.JustCompleted = false;
+                    InvokeAsync(StateHasChanged);
+                });
+            }
         }
         catch
         {
@@ -198,7 +349,11 @@ else
             ColumnIdentifier = task.ColumnId.ToString(),
             SubTaskCount = 0,
             CompletedSubTaskCount = 0,
-            TotalTimeSeconds = 0
+            TotalTimeSeconds = 0,
+            Priority = task.Priority,
+            DueDate = task.DueDate,
+            CoverColor = task.CoverColor,
+            Labels = []
         });
         _dropContainer?.Refresh();
     }
@@ -206,5 +361,139 @@ else
     private void HandleTaskClicked(int taskId)
     {
         Layout?.OpenDetailPanel(taskId);
+    }
+
+    private bool PassesFilter(BoardTaskItem item)
+    {
+        // Search filter
+        if (!string.IsNullOrWhiteSpace(_searchTerm)
+            && !item.Title.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Priority filter
+        if (_filterPriority.HasValue && item.Priority != _filterPriority)
+            return false;
+
+        // Due date filter
+        if (_filterDue == "overdue" && (!item.DueDate.HasValue || item.DueDate.Value.Date >= DateTime.UtcNow.Date))
+            return false;
+        if (_filterDue == "today" && item.DueDate?.Date != DateTime.UtcNow.Date)
+            return false;
+
+        return true;
+    }
+
+    private void ToggleFilter(char level)
+    {
+        int priority = level switch { 'H' => 3, 'M' => 2, 'L' => 1, _ => 0 };
+        _filterPriority = _filterPriority == priority ? null : priority;
+        _dropContainer?.Refresh();
+    }
+
+    private void ToggleDueFilter(string filter)
+    {
+        _filterDue = _filterDue == filter ? null : filter;
+        _dropContainer?.Refresh();
+    }
+
+    private void ApplyFilters()
+    {
+        _dropContainer?.Refresh();
+    }
+
+    private async Task HandleCompactToggle(bool toggled)
+    {
+        _compactView = toggled;
+        await LocalStorage.SetAsync("compactView", toggled.ToString());
+    }
+
+    private void StartEditingColumnName(ColumnResponse column)
+    {
+        _editingColumnId = column.Id;
+        _editColumnName = column.Name;
+    }
+
+    private async Task SaveColumnName(ColumnResponse column)
+    {
+        _editingColumnId = 0;
+        if (string.IsNullOrWhiteSpace(_editColumnName) || _editColumnName == column.Name) return;
+        var old = column.Name;
+        column.Name = _editColumnName;
+        try
+        {
+            await ColumnService.UpdateColumnAsync(BoardId, column.Id, new UpdateColumnRequest { Name = _editColumnName, IsDone = column.IsDone });
+        }
+        catch
+        {
+            column.Name = old;
+            Snackbar.Add("Could not rename column.", Severity.Error);
+        }
+    }
+
+    private async Task HandleColumnNameKeyDown(KeyboardEventArgs e, ColumnResponse column)
+    {
+        if (e.Key == "Enter") await SaveColumnName(column);
+        else if (e.Key == "Escape") _editingColumnId = 0;
+    }
+
+    private async Task ToggleColumnDone(ColumnResponse column)
+    {
+        var newDone = !column.IsDone;
+        try
+        {
+            await ColumnService.UpdateColumnAsync(BoardId, column.Id, new UpdateColumnRequest { Name = column.Name, IsDone = newDone });
+            column.IsDone = newDone;
+            Snackbar.Add(newDone ? "Column marked as Done" : "Column unmarked", Severity.Normal);
+        }
+        catch
+        {
+            Snackbar.Add("Could not update column.", Severity.Error);
+        }
+    }
+
+    private async Task DeleteColumn(ColumnResponse column)
+    {
+        if (_taskItems.Any(t => t.ColumnIdentifier == column.Id.ToString()))
+        {
+            Snackbar.Add("Move or delete all tasks first.", Severity.Warning);
+            return;
+        }
+
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Delete column",
+            $"Delete \"{column.Name}\"? This cannot be undone.",
+            yesText: "Delete",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                await ColumnService.DeleteColumnAsync(BoardId, column.Id);
+                _columns.Remove(column);
+            }
+            catch
+            {
+                Snackbar.Add("Could not delete column.", Severity.Error);
+            }
+        }
+    }
+
+    private string GetEmptyColumnMessage(ColumnResponse column)
+    {
+        if (column.IsDone) return "All clear!";
+        var idx = _columns.IndexOf(column);
+        if (idx == 0) return "Ready to start?";
+        return "Drop tasks here";
+    }
+
+    private string BoardBackgroundStyle
+    {
+        get
+        {
+            if (_board?.BackgroundType == 1 && !string.IsNullOrEmpty(_board.BackgroundValue))
+                return $"background: {_board.BackgroundValue}; border-radius: 16px; padding: 12px; margin: -4px; min-height: calc(100vh - 120px);";
+            return "";
+        }
     }
 }

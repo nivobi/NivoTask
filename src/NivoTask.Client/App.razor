@@ -1,16 +1,61 @@
-<CascadingAuthenticationState>
+@inject Services.SetupService SetupService
+@inject NavigationManager Navigation
+
+@if (!_loaded)
+{
+    <div class="d-flex align-center justify-center" style="height: 100vh;">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+    </div>
+}
+else if (!_setupComplete)
+{
     <Router AppAssembly="@typeof(App).Assembly">
         <Found Context="routeData">
-            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
-                <NotAuthorized>
-                    <RedirectToLogin />
-                </NotAuthorized>
-            </AuthorizeRouteView>
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.EmptyLayout)" />
         </Found>
         <NotFound>
-            <LayoutView Layout="@typeof(MainLayout)">
+            <LayoutView Layout="@typeof(Layout.EmptyLayout)">
                 <MudText Typo="Typo.h6">Page not found</MudText>
             </LayoutView>
         </NotFound>
     </Router>
-</CascadingAuthenticationState>
+}
+else
+{
+    <CascadingAuthenticationState>
+        <Router AppAssembly="@typeof(App).Assembly">
+            <Found Context="routeData">
+                <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
+                    <NotAuthorized>
+                        <RedirectToLogin />
+                    </NotAuthorized>
+                </AuthorizeRouteView>
+            </Found>
+            <NotFound>
+                <LayoutView Layout="@typeof(Layout.MainLayout)">
+                    <MudText Typo="Typo.h6">Page not found</MudText>
+                </LayoutView>
+            </NotFound>
+        </Router>
+    </CascadingAuthenticationState>
+}
+
+@code {
+    private bool _loaded;
+    private bool _setupComplete;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _setupComplete = await SetupService.IsSetupCompleteAsync();
+        _loaded = true;
+
+        if (!_setupComplete)
+        {
+            var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+            if (!uri.AbsolutePath.Equals("/setup", StringComparison.OrdinalIgnoreCase))
+            {
+                Navigation.NavigateTo("/setup", replace: true);
+            }
+        }
+    }
+}

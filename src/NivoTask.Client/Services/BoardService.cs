@@ -30,6 +30,10 @@ public class BoardService
             SubTaskCount = d.SubTaskCount,
             CompletedSubTaskCount = d.CompletedSubTaskCount,
             TotalTimeSeconds = d.TotalTimeSeconds,
+            Priority = d.Priority,
+            DueDate = d.DueDate,
+            CoverColor = d.CoverColor,
+            Labels = d.Labels,
             SubTasks = d.SubTasks
         }).ToList();
     }

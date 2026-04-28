@@ -3,7 +3,7 @@
 
 @if (_showInput)
 {
-    <div style="background: #fff; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 1px rgba(9,30,66,0.13), 0 0 1px rgba(9,30,66,0.12);">
+    <div style="background: var(--mud-palette-surface); border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 1px var(--mud-palette-overlay-dark), 0 0 1px var(--mud-palette-overlay-dark);">
         <MudTextField @bind-Value="_title" Placeholder="Enter a title..."
                       Variant="Variant.Text" Immediate="true"
                       OnKeyDown="HandleKeyDown" Disabled="_creating"

@@ -1,0 +1,332 @@
+@page "/setup"
+@layout EmptyLayout
+@attribute [AllowAnonymous]
+@inject Services.SetupService SetupService
+@inject NavigationManager Navigation
+@using NivoTask.Shared.Dtos.Setup
+
+<div class="d-flex align-center justify-center" style="min-height: 100vh; padding: 24px;">
+    <MudCard Style="width: 520px; border-radius: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.08); border: none; animation: fadeScaleIn 0.4s cubic-bezier(0.0, 0.0, 0.2, 1.0);">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h4" Align="Align.Center">NivoTask</MudText>
+                <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary" Class="mt-1">
+                    @_stepSubtitles[_currentStep]
+                </MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+
+        <MudCardContent>
+            @* Step indicator *@
+            <div class="d-flex justify-center mb-6 gap-2">
+                @for (var i = 0; i < _stepLabels.Length; i++)
+                {
+                    var step = i;
+                    <MudChip T="string"
+                             Size="Size.Small"
+                             Variant="step == _currentStep ? Variant.Filled : (step < _currentStep ? Variant.Filled : Variant.Outlined)"
+                             Color="step <= _currentStep ? Color.Secondary : Color.Default"
+                             Style="@(step < _currentStep ? "opacity: 0.6;" : "")">
+                        @_stepLabels[step]
+                    </MudChip>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true"
+                          CloseIconClicked="() => _errorMessage = null">
+                    @_errorMessage
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrEmpty(_successMessage))
+            {
+                <MudAlert Severity="Severity.Success" Class="mb-4">@_successMessage</MudAlert>
+            }
+
+            @* Step 0: Welcome *@
+            @if (_currentStep == 0)
+            {
+                <div class="d-flex flex-column align-center gap-4 py-4">
+                    <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.body1" Align="Align.Center">
+                        Welcome! Let's get your task board set up.<br />
+                        This will only take a minute.
+                    </MudText>
+                </div>
+            }
+
+            @* Step 1: Database *@
+            @if (_currentStep == 1)
+            {
+                <MudTextField @bind-Value="_dbServer" Label="Server" Variant="Variant.Outlined"
+                              Placeholder="localhost" Class="mb-3" />
+                <MudNumericField @bind-Value="_dbPort" Label="Port" Variant="Variant.Outlined"
+                                 Min="1" Max="65535" Class="mb-3" />
+                <MudTextField @bind-Value="_dbName" Label="Database Name" Variant="Variant.Outlined"
+                              Placeholder="nivotask" Class="mb-3" />
+                <MudTextField @bind-Value="_dbUsername" Label="Username" Variant="Variant.Outlined" Class="mb-3" />
+                <MudTextField @bind-Value="_dbPassword" Label="Password" Variant="Variant.Outlined"
+                              InputType="InputType.Password" Class="mb-3" />
+
+                <MudButton Variant="Variant.Outlined" Color="Color.Secondary" FullWidth="true"
+                           OnClick="TestConnection" Disabled="@_testing" Class="mb-2">
+                    @if (_testing)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Test Connection
+                </MudButton>
+
+                @if (_connectionTested && _connectionSuccess)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true">Connection successful</MudAlert>
+                }
+            }
+
+            @* Step 2: Admin Account *@
+            @if (_currentStep == 2)
+            {
+                <MudTextField @bind-Value="_adminEmail" Label="Email" Variant="Variant.Outlined"
+                              InputType="InputType.Email" Class="mb-3" />
+                <MudTextField @bind-Value="_adminPassword" Label="Password" Variant="Variant.Outlined"
+                              InputType="InputType.Password" HelperText="Minimum 8 characters" Class="mb-3" />
+                <MudTextField @bind-Value="_adminPasswordConfirm" Label="Confirm Password" Variant="Variant.Outlined"
+                              InputType="InputType.Password" Class="mb-3" />
+            }
+
+            @* Step 3: First Board *@
+            @if (_currentStep == 3)
+            {
+                <MudSwitch @bind-Value="_createBoard" Label="Create a starter board" Color="Color.Secondary" Class="mb-3" />
+                @if (_createBoard)
+                {
+                    <MudTextField @bind-Value="_boardName" Label="Board Name" Variant="Variant.Outlined"
+                                  Placeholder="My Board" Class="mb-3" />
+                }
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
+                    A board with To Do, In Progress, and Done columns will be created for you.
+                </MudText>
+            }
+
+            @* Setup complete *@
+            @if (_currentStep == 4)
+            {
+                <div class="d-flex flex-column align-center gap-4 py-4">
+                    @if (_completing)
+                    {
+                        <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Secondary" />
+                        <MudText Typo="Typo.body1" Align="Align.Center">Setting things up...</MudText>
+                    }
+                    else if (_setupDone)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Color="Color.Success" />
+                        <MudText Typo="Typo.h6" Align="Align.Center">Setup complete!</MudText>
+                        <MudText Typo="Typo.body1" Align="Align.Center">
+                            Waiting for the application to restart...
+                        </MudText>
+                        <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mt-2" />
+                    }
+                </div>
+            }
+        </MudCardContent>
+
+        @if (_currentStep < 4)
+        {
+            <MudCardActions Class="d-flex justify-space-between pa-4">
+                <MudButton Variant="Variant.Text" Color="Color.Default"
+                           OnClick="PreviousStep" Disabled="@(_currentStep == 0)">
+                    Back
+                </MudButton>
+
+                @if (_currentStep < 3)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                               OnClick="NextStep" Disabled="@(!CanAdvance())">
+                        Next
+                    </MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                               OnClick="RunSetup" Disabled="@_completing">
+                        Complete Setup
+                    </MudButton>
+                }
+            </MudCardActions>
+        }
+    </MudCard>
+</div>
+
+@code {
+    private int _currentStep;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    // Step labels
+    private readonly string[] _stepLabels = ["Welcome", "Database", "Account", "Board"];
+    private readonly string[] _stepSubtitles =
+    [
+        "First-time setup",
+        "Step 1 — Connect your database",
+        "Step 2 — Create your admin account",
+        "Step 3 — Set up your first board",
+        "Finishing up..."
+    ];
+
+    // Database fields
+    private string _dbServer = "localhost";
+    private int _dbPort = 3306;
+    private string _dbName = "nivotask";
+    private string _dbUsername = string.Empty;
+    private string _dbPassword = string.Empty;
+    private bool _testing;
+    private bool _connectionTested;
+    private bool _connectionSuccess;
+
+    // Admin fields
+    private string _adminEmail = string.Empty;
+    private string _adminPassword = string.Empty;
+    private string _adminPasswordConfirm = string.Empty;
+
+    // Board fields
+    private bool _createBoard = true;
+    private string _boardName = "My Board";
+
+    // Completion
+    private bool _completing;
+    private bool _setupDone;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // If setup already done, redirect to login
+        if (await SetupService.IsSetupCompleteAsync())
+            Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private bool CanAdvance() => _currentStep switch
+    {
+        0 => true,
+        1 => _connectionTested && _connectionSuccess,
+        2 => !string.IsNullOrWhiteSpace(_adminEmail)
+             && _adminPassword.Length >= 8
+             && _adminPassword == _adminPasswordConfirm,
+        3 => !_createBoard || !string.IsNullOrWhiteSpace(_boardName),
+        _ => false
+    };
+
+    private void NextStep()
+    {
+        _errorMessage = null;
+        _successMessage = null;
+
+        if (_currentStep == 2 && _adminPassword != _adminPasswordConfirm)
+        {
+            _errorMessage = "Passwords do not match.";
+            return;
+        }
+
+        _currentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _errorMessage = null;
+        _successMessage = null;
+        if (_currentStep > 0) _currentStep--;
+    }
+
+    private async Task TestConnection()
+    {
+        _testing = true;
+        _errorMessage = null;
+        _connectionTested = false;
+        _connectionSuccess = false;
+
+        var request = new TestConnectionRequest
+        {
+            Server = _dbServer,
+            Port = _dbPort,
+            Database = _dbName,
+            Username = _dbUsername,
+            Password = _dbPassword
+        };
+
+        var (success, error) = await SetupService.TestConnectionAsync(request);
+        _connectionTested = true;
+        _connectionSuccess = success;
+
+        if (!success)
+            _errorMessage = error ?? "Connection failed.";
+
+        _testing = false;
+    }
+
+    private async Task RunSetup()
+    {
+        _currentStep = 4;
+        _completing = true;
+        _errorMessage = null;
+
+        var request = new CompleteSetupRequest
+        {
+            Server = _dbServer,
+            Port = _dbPort,
+            Database = _dbName,
+            DbUsername = _dbUsername,
+            DbPassword = _dbPassword,
+            AdminEmail = _adminEmail,
+            AdminPassword = _adminPassword,
+            BoardName = _createBoard ? _boardName : null
+        };
+
+        var (success, error) = await SetupService.CompleteSetupAsync(request);
+        _completing = false;
+
+        if (success)
+        {
+            _setupDone = true;
+            SetupService.InvalidateCache();
+            // Poll until the app comes back after restart, then redirect to login
+            await WaitForRestartAndRedirect();
+        }
+        else
+        {
+            _errorMessage = error;
+            _currentStep = 3; // Go back to last input step
+        }
+    }
+
+    private async Task WaitForRestartAndRedirect()
+    {
+        // Wait for server to shut down
+        await Task.Delay(2000);
+
+        // Poll until server comes back (up to 60s)
+        using var pollClient = new HttpClient { BaseAddress = new Uri(Navigation.BaseUri) };
+        for (var i = 0; i < 30; i++)
+        {
+            try
+            {
+                var response = await pollClient.GetAsync("api/setup/status");
+                if (response.IsSuccessStatusCode)
+                {
+                    // Server is back — hard navigate to login
+                    Navigation.NavigateTo("/login", forceLoad: true);
+                    return;
+                }
+            }
+            catch
+            {
+                // Server still down, keep polling
+            }
+
+            await Task.Delay(2000);
+        }
+
+        // Timeout — tell user to reload manually
+        _errorMessage = "Server did not come back. Please restart the application and refresh this page.";
+        StateHasChanged();
+    }
+}

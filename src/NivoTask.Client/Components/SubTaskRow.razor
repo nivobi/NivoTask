@@ -9,7 +9,7 @@
 <div class="subtask-row @(IsActiveTimer ? "active-timer" : "") @(_isDone ? "is-done" : "")" @onmouseenter="() => _hovered = true" @onmouseleave="() => _hovered = false">
     <div class="d-flex align-center" style="min-height: 40px; padding: 4px 8px; gap: 6px;">
         <div class="done-check @(_isDone ? "checked" : "")" @onclick="ToggleDone"
-             style="width: 18px; height: 18px; border-radius: 4px; border: 2px solid @(_isDone ? "#36b37e" : "#c1c7d0"); flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease; background: @(_isDone ? "#36b37e" : "transparent");">
+             style="width: 18px; height: 18px; border-radius: 4px; border: 2px solid @(_isDone ? "#36b37e" : "var(--mud-palette-action-disabled)"); flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s ease; background: @(_isDone ? "#36b37e" : "transparent");">
             @if (_isDone)
             {
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -17,10 +17,10 @@
                 </svg>
             }
         </div>
-        <MudIconButton Icon="@TimerIcon" Size="Size.Small"
+        <MudIconButton Icon="@TimerIcon" Size="Size.Medium"
                        Color="@(IsActiveTimer ? Color.Secondary : Color.Default)"
                        OnClick="HandleTimerToggle"
-                       Style="@(IsActiveTimer ? "" : "opacity: 0.45;")" />
+                       Style="@(IsActiveTimer ? "" : "opacity: 0.6;")" />
         @if (_editing)
         {
             <MudTextField T="string" @bind-Value="_editTitle" Variant="Variant.Text"
@@ -151,6 +151,10 @@
             var secs = IsActiveTimer ? TimerState.ElapsedSeconds + _totalSeconds : _totalSeconds;
             var h = secs / 3600;
             var m = (secs % 3600) / 60;
+            var s = secs % 60;
+            if (IsActiveTimer)
+                return h > 0 ? $"{h}h {m:D2}m {s:D2}s" : $"{m}m {s:D2}s";
+            if (secs < 60) return $"{secs}s";
             if (h > 0) return $"{h}h {m:D2}m";
             return $"{m}m";
         }
@@ -409,8 +413,10 @@
     {
         var h = seconds / 3600;
         var m = (seconds % 3600) / 60;
-        if (h > 0) return $"{h}h {m:D2}m";
-        return $"{m}m";
+        var s = seconds % 60;
+        if (h > 0) return $"{h}h {m:D2}m {s:D2}s";
+        if (m > 0) return $"{m}m {s:D2}s";
+        return $"{s}s";
     }
 
     private static string FormatEntryDate(TimeEntryResponse entry)

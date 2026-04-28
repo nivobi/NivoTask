@@ -22,3 +22,6 @@ out/
 
 ## User secrets
 secrets.json
+
+## Setup wizard config (contains DB credentials)
+setup.json

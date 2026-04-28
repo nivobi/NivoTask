@@ -1,29 +1,39 @@
 @implements IDisposable
 @inject TimerStateService TimerState
+@inject TimeEntryService TimeEntryService
+@inject ISnackbar Snackbar
 
 @if (TimerState.IsRunning)
 {
     <div @onclick="OnChipClicked" class="timer-chip d-flex align-center gap-2"
-         style="cursor: pointer; padding: 4px 12px; border-radius: 20px; background: rgba(99, 102, 241, 0.08); margin: 0 8px; user-select: none; transition: background 0.15s ease;">
-        <div style="width: 6px; height: 6px; border-radius: 50%; background: #6366f1; animation: pulse-dot 2s infinite;"></div>
-        <span style="font-size: 0.75rem; font-weight: 500; color: #6366f1; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;">
+         style="cursor: pointer; padding: 6px 16px; border-radius: 20px; background: color-mix(in srgb, var(--mud-palette-secondary) 12%, transparent); margin: 0 8px; user-select: none; box-shadow: 0 1px 4px rgba(0,0,0,0.08); transition: background var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);">
+        <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--mud-palette-secondary); animation: pulse-dot 2s infinite;"></div>
+        <span style="font-size: 0.8125rem; font-weight: 500; color: var(--mud-palette-secondary); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;">
             @TruncatedTitle
         </span>
-        <span style="font-size: 0.75rem; font-weight: 600; color: #6366f1; font-variant-numeric: tabular-nums;">
+        <span style="font-size: 0.8125rem; font-weight: 600; color: var(--mud-palette-secondary); font-variant-numeric: tabular-nums;">
             @FormattedElapsed
         </span>
+        <div @onclick="OnStopClicked" @onclick:stopPropagation="true"
+             style="width: 22px; height: 22px; border-radius: 6px; background: color-mix(in srgb, var(--mud-palette-secondary) 15%, transparent); display: flex; align-items: center; justify-content: center; cursor: pointer; margin-left: 2px; transition: background var(--duration-fast) var(--ease-standard);"
+>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="var(--mud-palette-secondary)">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+            </svg>
+        </div>
     </div>
 }
 
 <style>
     @@keyframes pulse-dot {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.35; transform: scale(0.85); }
     }
 </style>
 
 @code {
     [Parameter] public EventCallback<int> OnNavigateToTask { get; set; }
+    [Parameter] public EventCallback<int> OnTimerStopped { get; set; }
 
     private string TruncatedTitle => TimerState.ActiveTaskTitle?.Length > 24
         ? TimerState.ActiveTaskTitle[..21] + "..."
@@ -51,6 +61,29 @@
     {
         if (TimerState.ActiveTaskId.HasValue)
             await OnNavigateToTask.InvokeAsync(TimerState.ActiveTaskId.Value);
+    }
+
+    private async Task OnStopClicked()
+    {
+        if (!TimerState.ActiveTaskId.HasValue) return;
+        var taskId = TimerState.ActiveTaskId.Value;
+        TimerState.Clear();
+        try
+        {
+            await TimeEntryService.StopTimerAsync(taskId);
+            await OnTimerStopped.InvokeAsync(taskId);
+        }
+        catch
+        {
+            try
+            {
+                var active = await TimeEntryService.GetActiveTimerAsync();
+                if (active is not null)
+                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+            }
+            catch { }
+            Snackbar.Add("Could not stop timer.", Severity.Error);
+        }
     }
 
     public void Dispose()

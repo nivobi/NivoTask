@@ -13,4 +13,7 @@ public class UpdateBoardRequest
 
     [StringLength(2000)]
     public string? Icon { get; set; }
+
+    public int? BackgroundType { get; set; }
+    public string? BackgroundValue { get; set; }
 }

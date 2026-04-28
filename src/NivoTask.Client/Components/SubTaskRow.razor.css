@@ -1,6 +1,6 @@
 .subtask-row {
-    border-radius: 8px;
-    transition: background-color 0.15s ease;
+    border-radius: 10px;
+    transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .subtask-row:hover {
@@ -8,14 +8,19 @@
 }
 
 .subtask-row.active-timer {
-    border-left: 3px solid var(--mud-palette-secondary);
-    background-color: rgba(99, 102, 241, 0.04);
-    padding-left: 1px;
+    border-left: 2px solid var(--mud-palette-secondary);
+    background-color: color-mix(in srgb, var(--mud-palette-secondary) 6%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mud-palette-secondary) 8%, transparent);
+    padding-left: 2px;
+}
+
+.subtask-row:hover :deep(.mud-icon-button) {
+    opacity: 0.8 !important;
 }
 
 .entry-row {
-    border-radius: 4px;
-    transition: background-color 0.1s ease;
+    border-radius: 6px;
+    transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .entry-row:hover {
