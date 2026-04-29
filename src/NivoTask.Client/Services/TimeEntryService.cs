@@ -29,6 +29,9 @@ public class TimeEntryService
         return await response.Content.ReadFromJsonAsync<ActiveTimerResponse>();
     }
 
+    public async Task<TimeSummaryResponse?> GetSummaryAsync()
+        => await _http.GetFromJsonAsync<TimeSummaryResponse>("api/time-entries/summary");
+
     public async Task<List<TimeEntryResponse>> GetTimeEntriesAsync(int taskId)
         => await _http.GetFromJsonAsync<List<TimeEntryResponse>>($"api/tasks/{taskId}/time-entries") ?? [];
 

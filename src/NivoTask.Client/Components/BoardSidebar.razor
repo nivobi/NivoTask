@@ -3,6 +3,22 @@
 @inject IDialogService DialogService
 
 <MudNavMenu>
+    <MudNavLink Href="/" Icon="@Icons.Material.Outlined.Home" Match="NavLinkMatch.All">
+        @if (IsExpanded)
+        {
+            <MudText Typo="Typo.body1">Dashboard</MudText>
+        }
+        else
+        {
+            <MudTooltip Text="Dashboard" Placement="Placement.Right">
+                <span></span>
+            </MudTooltip>
+        }
+    </MudNavLink>
+    @if (IsExpanded)
+    {
+        <div style="height:1px; background: var(--mud-palette-divider); margin: 8px 16px;"></div>
+    }
     @if (_boards is null)
     {
         @for (int i = 0; i < 4; i++)

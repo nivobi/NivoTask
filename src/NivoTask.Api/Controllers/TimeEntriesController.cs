@@ -147,6 +147,38 @@ public class TimeEntriesController : ControllerBase
         });
     }
 
+    [HttpGet("time-entries/summary")]
+    public async Task<ActionResult<TimeSummaryResponse>> GetSummary()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+
+        // Use server local time for "today" — self-hosted single-user app
+        var todayStart = DateTime.Now.Date;
+        var weekStart = todayStart.AddDays(-6); // last 7 days inclusive
+
+        var todayStartUtc = todayStart.ToUniversalTime();
+        var weekStartUtc = weekStart.ToUniversalTime();
+
+        // Effective entry time: EndTime for completed/manual, fallback to StartTime
+        var entries = await _db.TimeEntries
+            .Where(te => te.UserId == userId && te.EndTime != null)
+            .Select(te => new { te.DurationSeconds, Stamp = te.EndTime!.Value })
+            .Where(x => x.Stamp >= weekStartUtc)
+            .ToListAsync();
+
+        var today = entries.Where(e => e.Stamp >= todayStartUtc).ToList();
+        var week = entries;
+
+        return Ok(new TimeSummaryResponse
+        {
+            TodaySeconds = today.Sum(e => e.DurationSeconds),
+            WeekSeconds = week.Sum(e => e.DurationSeconds),
+            TodayEntryCount = today.Count,
+            WeekEntryCount = week.Count
+        });
+    }
+
     [HttpGet("tasks/{taskId}/time-entries")]
     public async Task<ActionResult<List<TimeEntryResponse>>> GetTimeEntries(int taskId)
     {

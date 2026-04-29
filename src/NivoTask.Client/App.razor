@@ -32,9 +32,16 @@ else
                 </AuthorizeRouteView>
             </Found>
             <NotFound>
-                <LayoutView Layout="@typeof(Layout.MainLayout)">
-                    <MudText Typo="Typo.h6">Page not found</MudText>
-                </LayoutView>
+                <AuthorizeView>
+                    <Authorized>
+                        <LayoutView Layout="@typeof(Layout.MainLayout)">
+                            <MudText Typo="Typo.h6">Page not found</MudText>
+                        </LayoutView>
+                    </Authorized>
+                    <NotAuthorized>
+                        <RedirectToLogin />
+                    </NotAuthorized>
+                </AuthorizeView>
             </NotFound>
         </Router>
     </CascadingAuthenticationState>
