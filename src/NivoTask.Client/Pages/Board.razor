@@ -83,15 +83,23 @@ else
                              Icon="@Icons.Material.Filled.ViewAgenda"
                              ToggledIcon="@Icons.Material.Filled.ViewStream"
                              Size="Size.Small" Style="opacity: 0.4;" />
+
+        @* Time tracker panel toggle *@
+        <MudToggleIconButton Toggled="_timePanelOpen"
+                             ToggledChanged="HandleTimePanelToggle"
+                             Icon="@Icons.Material.Outlined.Timer"
+                             ToggledIcon="@Icons.Material.Filled.Timer"
+                             Size="Size.Small" Style="opacity: 0.4;" />
     </div>
 
+    <div style="display: flex; gap: 16px; align-items: stretch; min-height: calc(100vh - 180px);">
     <MudDropContainer T="BoardTaskItem"
                       @ref="_dropContainer"
                       Items="_taskItems"
                       ItemsSelector="@((item, zone) => item.ColumnIdentifier == zone && PassesFilter(item))"
                       ItemDropped="OnTaskDropped"
                       Class="d-flex flex-row flex-grow-1"
-                      Style="overflow-x: auto; gap: 16px; padding: 4px; align-items: stretch; min-height: calc(100vh - 180px);">
+                      Style="overflow-x: auto; gap: 16px; padding: 4px; align-items: stretch; min-width: 0;">
         <ChildContent>
             @foreach (var column in _columns)
             {
@@ -161,6 +169,18 @@ else
             <TaskCard Item="@context" OnTaskClicked="HandleTaskClicked" IsCompact="_compactView" />
         </ItemRenderer>
     </MudDropContainer>
+    @if (_timePanelOpen)
+    {
+        <BoardTimePanel @ref="_timePanel"
+                        BoardId="BoardId"
+                        BoardName="@(_board?.Name ?? "")"
+                        BoardTasks="@TimePanelTasks"
+                        MemoryMode="@_timePanelMode"
+                        OnClose="CloseTimePanel"
+                        OnMemoryModeToggled="ToggleTimePanelMode"
+                        OnEntriesChanged="HandleTimePanelChanged" />
+    }
+    </div>
     </div>
 }
 
@@ -185,6 +205,17 @@ else
     // Column editing
     private int _editingColumnId;
     private string _editColumnName = "";
+
+    // Time tracker panel
+    private bool _timePanelOpen;
+    private string _timePanelMode = "per-board"; // or "global"
+    private BoardTimePanel? _timePanel;
+
+    private List<BoardTimePanel.BoardTaskOption> TimePanelTasks
+        => _taskItems
+            .OrderBy(t => t.Title)
+            .Select(t => new BoardTimePanel.BoardTaskOption { Id = t.Id, Title = t.Title })
+            .ToList();
 
     protected override async Task OnParametersSetAsync()
     {
@@ -258,6 +289,11 @@ else
             // Restore compact view preference
             var compact = await LocalStorage.GetAsync("compactView");
             _compactView = compact == "True";
+
+            // Restore time panel state (mode + per-board or global flag)
+            _timePanelMode = await LocalStorage.GetAsync("timePanel.mode") ?? "per-board";
+            var openKey = _timePanelMode == "global" ? "timePanel.open.global" : $"timePanel.open.{BoardId}";
+            _timePanelOpen = await LocalStorage.GetAsync(openKey) == "True";
         }
         catch
         {
@@ -405,6 +441,47 @@ else
     {
         _compactView = toggled;
         await LocalStorage.SetAsync("compactView", toggled.ToString());
+    }
+
+    private async Task HandleTimePanelToggle(bool toggled)
+    {
+        _timePanelOpen = toggled;
+        var key = _timePanelMode == "global" ? "timePanel.open.global" : $"timePanel.open.{BoardId}";
+        await LocalStorage.SetAsync(key, toggled.ToString());
+    }
+
+    private async Task CloseTimePanel()
+    {
+        _timePanelOpen = false;
+        var key = _timePanelMode == "global" ? "timePanel.open.global" : $"timePanel.open.{BoardId}";
+        await LocalStorage.SetAsync(key, "False");
+    }
+
+    private async Task ToggleTimePanelMode()
+    {
+        _timePanelMode = _timePanelMode == "per-board" ? "global" : "per-board";
+        await LocalStorage.SetAsync("timePanel.mode", _timePanelMode);
+        // Persist current open-state under the new mode's key so the toggle stays sticky.
+        var key = _timePanelMode == "global" ? "timePanel.open.global" : $"timePanel.open.{BoardId}";
+        await LocalStorage.SetAsync(key, _timePanelOpen.ToString());
+        Snackbar.Add(_timePanelMode == "global" ? "Time panel: global memory" : "Time panel: per-board memory", Severity.Normal);
+    }
+
+    private async Task HandleTimePanelChanged()
+    {
+        // Refresh task time totals on the board (cards show TotalTimeSeconds)
+        try
+        {
+            var refreshed = await BoardService.GetBoardTasksAsync(BoardId);
+            foreach (var t in _taskItems)
+            {
+                var match = refreshed.FirstOrDefault(r => r.Id == t.Id);
+                if (match is not null)
+                    t.TotalTimeSeconds = match.TotalTimeSeconds;
+            }
+            _dropContainer?.Refresh();
+        }
+        catch { }
     }
 
     private void StartEditingColumnName(ColumnResponse column)

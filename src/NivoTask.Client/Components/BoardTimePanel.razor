@@ -1,0 +1,615 @@
+@using NivoTask.Shared.Dtos.TimeEntries
+@using NivoTask.Shared.Dtos.Tasks
+@implements IDisposable
+@inject TimerStateService TimerState
+@inject TimeEntryService TimeEntryService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<div class="board-time-panel" style="@PanelStyle">
+    @* Header — title + close + memory-mode toggle *@
+    <div class="d-flex align-center justify-space-between" style="padding: 12px 14px 8px; gap: 6px;">
+        <div class="d-flex align-center gap-2" style="font-weight: 600; font-size: 0.8125rem; letter-spacing: -0.01em;">
+            <MudIcon Icon="@Icons.Material.Outlined.Timer" Size="Size.Small" Style="font-size: 16px; opacity: 0.6;" />
+            <span>Time</span>
+        </div>
+        <div class="d-flex align-center">
+            <MudIconButton Icon="@(MemoryMode == "global" ? Icons.Material.Outlined.Public : Icons.Material.Outlined.Bookmark)"
+                           Size="Size.Small" OnClick="ToggleMemoryMode"
+                           Style="opacity: 0.45;" />
+            <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                           OnClick="OnClose" Style="opacity: 0.45;" />
+        </div>
+    </div>
+
+    @* Quick-start row — free text + optional task picker + ▶ *@
+    <div style="padding: 0 14px 10px;">
+        <div class="d-flex align-center gap-2 mb-2">
+            <MudIconButton Icon="@(IsTimerOnThisBoard ? Icons.Material.Filled.Stop : Icons.Material.Filled.PlayArrow)"
+                           Size="Size.Medium"
+                           Color="@(IsTimerOnThisBoard ? Color.Secondary : Color.Default)"
+                           OnClick="HandleStartStop"
+                           Disabled="_starting"
+                           Style="@(IsTimerOnThisBoard ? "" : "opacity: 0.7;")" />
+            <div style="flex: 1; position: relative;">
+                <MudTextField T="string" @bind-Value="_quickNotes"
+                              Placeholder="@(IsTimerOnThisBoard ? "Tracking..." : "What working on?")"
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              Disabled="IsTimerOnThisBoard"
+                              OnKeyDown="HandleQuickKeyDown"
+                              Immediate="true"
+                              Style="font-size: 0.8125rem;" />
+                @if (_showSuggestions && _filteredSuggestions.Count > 0)
+                {
+                    <div class="notes-suggestions" style="position: absolute; top: 100%; left: 0; right: 0; z-index: 10; background: var(--mud-palette-surface); border: 1px solid var(--mud-palette-divider); border-radius: 8px; box-shadow: 0 4px 16px var(--mud-palette-overlay-dark); max-height: 180px; overflow-y: auto; margin-top: 4px;">
+                        @foreach (var s in _filteredSuggestions.Take(8))
+                        {
+                            <div class="suggestion-row" @onclick="() => PickSuggestion(s)"
+                                 style="padding: 6px 12px; font-size: 0.8125rem; cursor: pointer;">
+                                @s
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+        <MudSelect T="int?" @bind-Value="_quickTaskId"
+                   Placeholder="No task (free entry)"
+                   Variant="Variant.Outlined" Margin="Margin.Dense"
+                   Dense="true" Style="font-size: 0.75rem;"
+                   Disabled="IsTimerOnThisBoard">
+            <MudSelectItem T="int?" Value="@((int?)null)">No task (free)</MudSelectItem>
+            @foreach (var t in BoardTasks)
+            {
+                <MudSelectItem T="int?" Value="@((int?)t.Id)">@t.Title</MudSelectItem>
+            }
+        </MudSelect>
+    </div>
+
+    @* Live timer block (only when running on this board) *@
+    @if (IsTimerOnThisBoard)
+    {
+        <div style="margin: 4px 14px 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb, var(--mud-palette-secondary) 10%, transparent);">
+            <div class="d-flex align-center gap-2">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: var(--mud-palette-secondary); animation: pulse-dot 2s infinite;"></div>
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-size: 0.8125rem; font-weight: 600; color: var(--mud-palette-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                        @LiveTimerLabel
+                    </div>
+                </div>
+                <div style="font-size: 1.0625rem; font-weight: 600; color: var(--mud-palette-secondary); font-variant-numeric: tabular-nums;">
+                    @FormatHms(TimerState.ElapsedSeconds)
+                </div>
+            </div>
+        </div>
+    }
+    else if (TimerState.IsRunning)
+    {
+        <div style="margin: 4px 14px 12px; padding: 8px 12px; border-radius: 8px; background: var(--mud-palette-background-gray); font-size: 0.75rem; opacity: 0.6;">
+            Running on @(TimerState.ActiveBoardName ?? "another board")
+        </div>
+    }
+
+    @* Totals *@
+    <div style="padding: 4px 14px 12px;">
+        <div class="totals-grid">
+            <div class="total-cell">
+                <div class="total-label">Today</div>
+                <div class="total-value">@FormatTotal(TodaySeconds)</div>
+            </div>
+            <div class="total-cell">
+                <div class="total-label">Week</div>
+                <div class="total-value">@FormatTotal(WeekSeconds)</div>
+            </div>
+            <div class="total-cell">
+                <div class="total-label">All-time</div>
+                <div class="total-value">@FormatTotal(_summary?.AllTimeSeconds ?? 0)</div>
+            </div>
+        </div>
+    </div>
+
+    @* Recent entries *@
+    <div class="recent-section">
+        <div class="d-flex align-center justify-space-between" style="padding: 4px 14px 6px;">
+            <span style="font-size: 0.6875rem; font-weight: 600; opacity: 0.45; letter-spacing: 0.05em; text-transform: uppercase;">
+                Recent
+            </span>
+            <MudIconButton Icon="@Icons.Material.Outlined.AddCircleOutline" Size="Size.Small"
+                           OnClick="() => _showManualForm = !_showManualForm"
+                           Style="opacity: 0.4; font-size: 16px;" />
+        </div>
+
+        @if (_showManualForm)
+        {
+            <div style="padding: 4px 14px 10px; display: flex; flex-direction: column; gap: 6px;">
+                <div class="d-flex gap-2 align-center">
+                    <MudNumericField T="int" @bind-Value="_manualMinutes" Label="Min"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Style="max-width: 78px; font-size: 0.8125rem;" Min="1" Max="1440" />
+                    <MudTextField T="string" @bind-Value="_manualNotes" Placeholder="Notes (project tag)"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                  Class="flex-grow-1" Style="font-size: 0.8125rem;" />
+                </div>
+                <MudSelect T="int?" @bind-Value="_manualTaskId" Placeholder="No task"
+                           Variant="Variant.Outlined" Margin="Margin.Dense" Dense="true"
+                           Style="font-size: 0.75rem;">
+                    <MudSelectItem T="int?" Value="@((int?)null)">No task (free)</MudSelectItem>
+                    @foreach (var t in BoardTasks)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)t.Id)">@t.Title</MudSelectItem>
+                    }
+                </MudSelect>
+                <div class="d-flex justify-end gap-2">
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => _showManualForm = false"
+                               Style="text-transform: none;">Cancel</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Small"
+                               OnClick="AddManualEntry" Disabled="_savingManual"
+                               Style="text-transform: none;">Add</MudButton>
+                </div>
+            </div>
+        }
+
+        @if (_loadingEntries && _entries is null)
+        {
+            <div style="padding: 8px 14px; display: flex; flex-direction: column; gap: 6px;">
+                @for (int i = 0; i < 3; i++)
+                {
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="28px"
+                                 Style="border-radius: 6px;" />
+                }
+            </div>
+        }
+        else if (_entries is null || _entries.Count == 0)
+        {
+            <div style="padding: 16px 14px; text-align: center; opacity: 0.35; font-size: 0.75rem;">
+                No entries yet
+            </div>
+        }
+        else
+        {
+            <div style="padding: 0 8px 12px; display: flex; flex-direction: column;">
+                @foreach (var e in _entries)
+                {
+                    <div class="entry-row" @onmouseenter="() => _hoveredEntryId = e.Id" @onmouseleave="() => _hoveredEntryId = 0">
+                        <MudIcon Icon="@(e.IsManual ? Icons.Material.Outlined.EditNote : Icons.Material.Outlined.Timer)"
+                                 Size="Size.Small" Style="font-size: 14px; opacity: 0.25; flex-shrink: 0;" />
+                        <div class="entry-main">
+                            <div class="entry-label">@FormatEntryLabel(e)</div>
+                            <div class="entry-meta">@FormatEntryDate(e)</div>
+                        </div>
+                        <div class="entry-duration">@FormatDuration(e.DurationSeconds)</div>
+                        @if (_hoveredEntryId == e.Id)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small"
+                                           OnClick="() => DeleteEntry(e)"
+                                           Style="opacity: 0.4; font-size: 14px;" />
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .board-time-panel {
+        background: var(--mud-palette-surface);
+        border-radius: 16px;
+        border: 1px solid var(--mud-palette-divider);
+        display: flex;
+        flex-direction: column;
+        align-self: flex-start;
+        max-height: calc(100vh - 200px);
+        overflow-y: auto;
+        animation: slideInRight 0.25s cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    }
+
+    @@keyframes slideInRight {
+        from { opacity: 0; transform: translateX(12px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    @@keyframes pulse-dot {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.35; transform: scale(0.85); }
+    }
+
+    .totals-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+    }
+
+    .total-cell {
+        background: var(--mud-palette-background-gray);
+        border-radius: 10px;
+        padding: 8px 10px;
+        text-align: center;
+    }
+
+    .total-label {
+        font-size: 0.625rem;
+        opacity: 0.5;
+        font-weight: 500;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+
+    .total-value {
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        margin-top: 2px;
+        letter-spacing: -0.014em;
+    }
+
+    .recent-section { border-top: 1px solid var(--mud-palette-divider); }
+
+    .entry-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 6px;
+        border-radius: 8px;
+        font-size: 0.75rem;
+    }
+
+    .entry-row:hover { background: var(--mud-palette-background-gray); }
+
+    .entry-main { flex: 1; min-width: 0; }
+
+    .entry-label {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .entry-meta {
+        font-size: 0.6875rem;
+        opacity: 0.45;
+        margin-top: 1px;
+    }
+
+    .entry-duration {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        opacity: 0.7;
+        flex-shrink: 0;
+    }
+
+    .suggestion-row:hover { background: var(--mud-palette-background-gray); }
+</style>
+
+@code {
+    [Parameter] public int BoardId { get; set; }
+    [Parameter] public string BoardName { get; set; } = "";
+    [Parameter] public List<BoardTaskOption> BoardTasks { get; set; } = [];
+    [Parameter] public string MemoryMode { get; set; } = "per-board";
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnMemoryModeToggled { get; set; }
+    [Parameter] public EventCallback OnEntriesChanged { get; set; }
+
+    private string PanelStyle => "min-width: 320px; max-width: 320px; flex-shrink: 0;";
+
+    private bool IsTimerOnThisBoard => TimerState.IsRunning && TimerState.ActiveBoardId == BoardId;
+
+    private string LiveTimerLabel
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(TimerState.ActiveTaskTitle)) return TimerState.ActiveTaskTitle!;
+            return BoardName;
+        }
+    }
+
+    private int TodaySeconds => (_summary?.TodaySeconds ?? 0) + (IsTimerOnThisBoard ? TimerState.ElapsedSeconds : 0);
+    private int WeekSeconds => (_summary?.WeekSeconds ?? 0) + (IsTimerOnThisBoard ? TimerState.ElapsedSeconds : 0);
+
+    private BoardTimeSummaryResponse? _summary;
+    private List<TimeEntryResponse>? _entries;
+    private bool _loadingEntries;
+    private string _quickNotes = "";
+    private int? _quickTaskId;
+    private bool _starting;
+    private bool _showManualForm;
+    private int _manualMinutes;
+    private string? _manualNotes;
+    private int? _manualTaskId;
+    private bool _savingManual;
+    private int _hoveredEntryId;
+    private List<string> _noteHistory = [];
+    private List<string> _filteredSuggestions = [];
+    private bool _showSuggestions;
+    private int _previousBoardId;
+
+    protected override void OnInitialized()
+        => TimerState.OnTimerChanged += HandleTimerChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (BoardId != _previousBoardId && BoardId > 0)
+        {
+            _previousBoardId = BoardId;
+            await LoadAll();
+        }
+    }
+
+    private async void HandleTimerChanged()
+        => await InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+        => TimerState.OnTimerChanged -= HandleTimerChanged;
+
+    private async Task LoadAll()
+    {
+        _loadingEntries = true;
+        StateHasChanged();
+        try
+        {
+            var summaryTask = TimeEntryService.GetBoardTimeSummaryAsync(BoardId);
+            var entriesTask = TimeEntryService.GetBoardTimeEntriesAsync(BoardId, take: 30);
+            await Task.WhenAll(summaryTask, entriesTask);
+            _summary = summaryTask.Result;
+            _entries = entriesTask.Result;
+            BuildNoteHistory();
+        }
+        catch
+        {
+            Snackbar.Add("Could not load board time data.", Severity.Error);
+        }
+        _loadingEntries = false;
+        StateHasChanged();
+    }
+
+    private void BuildNoteHistory()
+    {
+        if (_entries is null) { _noteHistory = []; return; }
+        // Notes from last 30 days, top by frequency
+        var cutoff = DateTime.UtcNow.AddDays(-30);
+        _noteHistory = _entries
+            .Where(e => !string.IsNullOrWhiteSpace(e.Notes)
+                     && (e.EndTime ?? e.StartTime ?? DateTime.UtcNow) >= cutoff)
+            .GroupBy(e => e.Notes!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .Take(10)
+            .ToList();
+    }
+
+    private void UpdateSuggestions()
+    {
+        if (string.IsNullOrWhiteSpace(_quickNotes))
+        {
+            _showSuggestions = false;
+            _filteredSuggestions = [];
+            return;
+        }
+        _filteredSuggestions = _noteHistory
+            .Where(n => n.StartsWith(_quickNotes, StringComparison.OrdinalIgnoreCase) && !n.Equals(_quickNotes, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        _showSuggestions = _filteredSuggestions.Count > 0;
+    }
+
+    private async Task HandleQuickKeyDown(KeyboardEventArgs e)
+    {
+        UpdateSuggestions();
+        if (e.Key == "Enter" && !IsTimerOnThisBoard)
+        {
+            _showSuggestions = false;
+            await StartQuickTimer();
+        }
+        else if (e.Key == "Escape")
+        {
+            _showSuggestions = false;
+        }
+    }
+
+    private void PickSuggestion(string note)
+    {
+        _quickNotes = note;
+        _showSuggestions = false;
+    }
+
+    private async Task HandleStartStop()
+    {
+        if (IsTimerOnThisBoard)
+            await StopBoardTimer();
+        else
+            await StartQuickTimer();
+    }
+
+    private async Task StartQuickTimer()
+    {
+        if (_starting) return;
+        _starting = true;
+        try
+        {
+            var response = await TimeEntryService.StartBoardTimerAsync(BoardId, new StartBoardTimerRequest
+            {
+                TaskId = _quickTaskId,
+                Notes = string.IsNullOrWhiteSpace(_quickNotes) ? null : _quickNotes
+            });
+
+            if (response.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                var current = await TimeEntryService.GetActiveTimerAsync();
+                if (current is null)
+                {
+                    TimerState.Clear();
+                    _starting = false;
+                    return;
+                }
+
+                var parameters = new DialogParameters<TimerSwitchDialog>
+                {
+                    { x => x.ActiveTaskTitle, current.TaskTitle ?? current.BoardName },
+                    { x => x.ActiveElapsedSeconds, current.ElapsedSeconds },
+                    { x => x.NewTaskTitle, string.IsNullOrWhiteSpace(_quickNotes) ? BoardName : _quickNotes }
+                };
+                var dialog = await DialogService.ShowAsync<TimerSwitchDialog>(
+                    "Switch Timer?", parameters,
+                    new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, NoHeader = true, BackdropClick = true });
+                var result = await dialog.Result;
+                if (result is not null && !result.Canceled)
+                {
+                    if (current.TaskId.HasValue)
+                        await TimeEntryService.StopTimerAsync(current.TaskId.Value);
+                    else
+                        await TimeEntryService.StopBoardTimerAsync(current.BoardId);
+
+                    var retry = await TimeEntryService.StartBoardTimerAsync(BoardId, new StartBoardTimerRequest
+                    {
+                        TaskId = _quickTaskId,
+                        Notes = string.IsNullOrWhiteSpace(_quickNotes) ? null : _quickNotes
+                    });
+                    retry.EnsureSuccessStatusCode();
+                    var fresh = await TimeEntryService.GetActiveTimerAsync();
+                    if (fresh is not null)
+                        TimerState.SetActive(fresh.TaskId, fresh.TaskTitle, fresh.BoardId, fresh.BoardName, fresh.EntryId, fresh.StartTime);
+                }
+            }
+            else if (response.IsSuccessStatusCode)
+            {
+                var fresh = await TimeEntryService.GetActiveTimerAsync();
+                if (fresh is not null)
+                    TimerState.SetActive(fresh.TaskId, fresh.TaskTitle, fresh.BoardId, fresh.BoardName, fresh.EntryId, fresh.StartTime);
+            }
+            else
+            {
+                Snackbar.Add("Could not start timer.", Severity.Error);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Could not start timer.", Severity.Error);
+        }
+        _starting = false;
+    }
+
+    private async Task StopBoardTimer()
+    {
+        var taskId = TimerState.ActiveTaskId;
+        TimerState.Clear();
+        try
+        {
+            if (taskId.HasValue)
+                await TimeEntryService.StopTimerAsync(taskId.Value);
+            else
+                await TimeEntryService.StopBoardTimerAsync(BoardId);
+            _quickNotes = "";
+            _quickTaskId = null;
+            await LoadAll();
+            await OnEntriesChanged.InvokeAsync();
+        }
+        catch
+        {
+            Snackbar.Add("Could not stop timer.", Severity.Error);
+            try
+            {
+                var fresh = await TimeEntryService.GetActiveTimerAsync();
+                if (fresh is not null)
+                    TimerState.SetActive(fresh.TaskId, fresh.TaskTitle, fresh.BoardId, fresh.BoardName, fresh.EntryId, fresh.StartTime);
+            }
+            catch { }
+        }
+    }
+
+    private async Task AddManualEntry()
+    {
+        if (_manualMinutes < 1 || _manualMinutes > 1440) return;
+        _savingManual = true;
+        try
+        {
+            await TimeEntryService.CreateBoardManualEntryAsync(BoardId, new CreateBoardTimeEntryRequest
+            {
+                TaskId = _manualTaskId,
+                DurationMinutes = _manualMinutes,
+                Notes = string.IsNullOrWhiteSpace(_manualNotes) ? null : _manualNotes
+            });
+            _manualMinutes = 0;
+            _manualNotes = null;
+            _manualTaskId = null;
+            _showManualForm = false;
+            await LoadAll();
+            await OnEntriesChanged.InvokeAsync();
+        }
+        catch
+        {
+            Snackbar.Add("Could not add entry.", Severity.Error);
+        }
+        _savingManual = false;
+    }
+
+    private async Task DeleteEntry(TimeEntryResponse e)
+    {
+        var snapshot = _entries?.ToList();
+        _entries?.Remove(e);
+        StateHasChanged();
+        try
+        {
+            await TimeEntryService.DeleteTimeEntryAsync(e.Id);
+            await LoadAll();
+            await OnEntriesChanged.InvokeAsync();
+        }
+        catch
+        {
+            _entries = snapshot;
+            Snackbar.Add("Could not delete entry.", Severity.Error);
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleMemoryMode()
+        => await OnMemoryModeToggled.InvokeAsync();
+
+    public async Task RefreshAsync() => await LoadAll();
+
+    private static string FormatEntryLabel(TimeEntryResponse e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.Notes)) return e.Notes!;
+        if (!string.IsNullOrWhiteSpace(e.TaskTitle)) return e.TaskTitle!;
+        return "Untitled";
+    }
+
+    private static string FormatEntryDate(TimeEntryResponse e)
+    {
+        var stamp = e.EndTime ?? e.StartTime ?? DateTime.UtcNow;
+        var local = stamp.ToLocalTime();
+        var today = DateTime.Now.Date;
+        if (local.Date == today) return local.ToString("HH:mm");
+        if (local.Date == today.AddDays(-1)) return "Yesterday";
+        return local.ToString("MMM d");
+    }
+
+    private static string FormatDuration(int seconds)
+    {
+        var h = seconds / 3600;
+        var m = (seconds % 3600) / 60;
+        if (h > 0) return $"{h}h {m:D2}m";
+        if (m > 0) return $"{m}m";
+        return $"{seconds}s";
+    }
+
+    private static string FormatTotal(int seconds)
+    {
+        if (seconds <= 0) return "0m";
+        var h = seconds / 3600;
+        var m = (seconds % 3600) / 60;
+        if (h == 0) return $"{m}m";
+        if (m == 0) return $"{h}h";
+        return $"{h}h {m}m";
+    }
+
+    private static string FormatHms(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return $"{(int)ts.TotalHours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
+    }
+
+    public class BoardTaskOption
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = "";
+    }
+}

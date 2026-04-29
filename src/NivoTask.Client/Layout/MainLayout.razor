@@ -225,7 +225,7 @@
                     var active = await TimeEntryService.GetActiveTimerAsync();
                     if (active is not null)
                     {
-                        TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                        TimerState.SetActive(active.TaskId, active.TaskTitle, active.BoardId, active.BoardName, active.EntryId, active.StartTime);
                         StateHasChanged();
                     }
                 }
@@ -337,13 +337,14 @@
         OnTaskMetadataChanged?.Invoke(taskId);
     }
 
-    private async Task HandleTimerStopped(int subtaskId)
+    private async Task HandleTimerStopped(int? subtaskId)
     {
         StateHasChanged();
+        if (!subtaskId.HasValue) return;
         // Find parent task to refresh board card
         try
         {
-            var detail = await TaskService.GetTaskDetailAsync(subtaskId);
+            var detail = await TaskService.GetTaskDetailAsync(subtaskId.Value);
             if (detail?.ParentTaskId is not null)
                 OnTaskMetadataChanged?.Invoke(detail.ParentTaskId.Value);
         }

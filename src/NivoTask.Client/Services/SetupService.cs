@@ -27,11 +27,11 @@ public class SetupService
         return _cachedStatus.Value;
     }
 
-    public async Task<(bool Success, string? Error)> TestConnectionAsync(TestConnectionRequest request)
+    public async Task<TestConnectionResponse> TestConnectionAsync(TestConnectionRequest request)
     {
         var response = await _http.PostAsJsonAsync("api/setup/test-connection", request);
-        var result = await response.Content.ReadFromJsonAsync<TestConnectionResult>();
-        return (result?.Success ?? false, result?.Error);
+        var result = await response.Content.ReadFromJsonAsync<TestConnectionResponse>();
+        return result ?? new TestConnectionResponse { Success = false, Error = "Empty response from server." };
     }
 
     public async Task<(bool Success, string? Error)> CompleteSetupAsync(CompleteSetupRequest request)
@@ -45,8 +45,18 @@ public class SetupService
         return (false, result?.Error ?? "Setup failed. Please try again.");
     }
 
+    public async Task<(bool Success, string? Error)> AdoptExistingAsync(AdoptExistingRequest request)
+    {
+        var response = await _http.PostAsJsonAsync("api/setup/adopt-existing", request);
+        var result = await response.Content.ReadFromJsonAsync<CompleteSetupResult>();
+
+        if (response.IsSuccessStatusCode && (result?.Success ?? false))
+            return (true, null);
+
+        return (false, result?.Error ?? "Adoption failed. Please try again.");
+    }
+
     public void InvalidateCache() => _cachedStatus = null;
 
-    private record TestConnectionResult(bool Success, string? Error);
     private record CompleteSetupResult(bool Success, string? Error, string? Message);
 }

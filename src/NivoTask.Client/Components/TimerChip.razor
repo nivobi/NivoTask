@@ -9,7 +9,7 @@
          style="cursor: pointer; padding: 6px 16px; border-radius: 20px; background: color-mix(in srgb, var(--mud-palette-secondary) 12%, transparent); margin: 0 8px; user-select: none; box-shadow: 0 1px 4px rgba(0,0,0,0.08); transition: background var(--duration-fast) var(--ease-standard), transform var(--duration-fast) var(--ease-standard);">
         <div style="width: 6px; height: 6px; border-radius: 50%; background: var(--mud-palette-secondary); animation: pulse-dot 2s infinite;"></div>
         <span style="font-size: 0.8125rem; font-weight: 500; color: var(--mud-palette-secondary); white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis;">
-            @TruncatedTitle
+            @TruncatedLabel
         </span>
         <span style="font-size: 0.8125rem; font-weight: 600; color: var(--mud-palette-secondary); font-variant-numeric: tabular-nums;">
             @FormattedElapsed
@@ -33,11 +33,22 @@
 
 @code {
     [Parameter] public EventCallback<int> OnNavigateToTask { get; set; }
-    [Parameter] public EventCallback<int> OnTimerStopped { get; set; }
+    [Parameter] public EventCallback<int?> OnTimerStopped { get; set; }
 
-    private string TruncatedTitle => TimerState.ActiveTaskTitle?.Length > 24
-        ? TimerState.ActiveTaskTitle[..21] + "..."
-        : TimerState.ActiveTaskTitle ?? "";
+    private string DisplayLabel
+    {
+        get
+        {
+            // Prefer task title; fall back to notes (free entry tag); finally board name.
+            if (!string.IsNullOrWhiteSpace(TimerState.ActiveTaskTitle)) return TimerState.ActiveTaskTitle!;
+            if (!string.IsNullOrWhiteSpace(TimerState.ActiveBoardName)) return TimerState.ActiveBoardName!;
+            return "Tracking";
+        }
+    }
+
+    private string TruncatedLabel => DisplayLabel.Length > 24
+        ? DisplayLabel[..21] + "..."
+        : DisplayLabel;
 
     private string FormattedElapsed
     {
@@ -65,12 +76,15 @@
 
     private async Task OnStopClicked()
     {
-        if (!TimerState.ActiveTaskId.HasValue) return;
-        var taskId = TimerState.ActiveTaskId.Value;
+        var taskId = TimerState.ActiveTaskId;
+        var boardId = TimerState.ActiveBoardId;
         TimerState.Clear();
         try
         {
-            await TimeEntryService.StopTimerAsync(taskId);
+            if (taskId.HasValue)
+                await TimeEntryService.StopTimerAsync(taskId.Value);
+            else if (boardId.HasValue)
+                await TimeEntryService.StopBoardTimerAsync(boardId.Value);
             await OnTimerStopped.InvokeAsync(taskId);
         }
         catch
@@ -79,7 +93,7 @@
             {
                 var active = await TimeEntryService.GetActiveTimerAsync();
                 if (active is not null)
-                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.BoardId, active.BoardName, active.EntryId, active.StartTime);
             }
             catch { }
             Snackbar.Add("Could not stop timer.", Severity.Error);

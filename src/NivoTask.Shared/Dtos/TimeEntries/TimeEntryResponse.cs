@@ -3,7 +3,9 @@ namespace NivoTask.Shared.Dtos.TimeEntries;
 public class TimeEntryResponse
 {
     public int Id { get; set; }
-    public int TaskId { get; set; }
+    public int? TaskId { get; set; }
+    public string? TaskTitle { get; set; }
+    public int BoardId { get; set; }
     public DateTime? StartTime { get; set; }
     public DateTime? EndTime { get; set; }
     public int DurationSeconds { get; set; }

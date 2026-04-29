@@ -220,7 +220,7 @@
                 {
                     var active = await TimeEntryService.GetActiveTimerAsync();
                     if (active is not null)
-                        TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                        TimerState.SetActive(active.TaskId, active.TaskTitle, active.BoardId, active.BoardName, active.EntryId, active.StartTime);
                 }
                 catch { }
                 Snackbar.Add("Could not stop timer.", Severity.Error);
@@ -242,14 +242,14 @@
                     {
                         var started = await TimeEntryService.GetActiveTimerAsync();
                         if (started is not null)
-                            TimerState.SetActive(started.TaskId, started.TaskTitle, started.EntryId, started.StartTime);
+                            TimerState.SetActive(started.TaskId, started.TaskTitle, started.BoardId, started.BoardName, started.EntryId, started.StartTime);
                     }
                     return;
                 }
 
                 var parameters = new DialogParameters<TimerSwitchDialog>
                 {
-                    { x => x.ActiveTaskTitle, currentActive.TaskTitle },
+                    { x => x.ActiveTaskTitle, currentActive.TaskTitle ?? currentActive.BoardName },
                     { x => x.ActiveElapsedSeconds, currentActive.ElapsedSeconds },
                     { x => x.NewTaskTitle, SubTask.Title }
                 };
@@ -265,12 +265,15 @@
                 {
                     try
                     {
-                        await TimeEntryService.StopTimerAsync(currentActive.TaskId);
+                        if (currentActive.TaskId.HasValue)
+                            await TimeEntryService.StopTimerAsync(currentActive.TaskId.Value);
+                        else
+                            await TimeEntryService.StopBoardTimerAsync(currentActive.BoardId);
                         var startResponse = await TimeEntryService.StartTimerAsync(SubTask.Id);
                         startResponse.EnsureSuccessStatusCode();
                         var newTimer = await TimeEntryService.GetActiveTimerAsync();
                         if (newTimer is not null)
-                            TimerState.SetActive(newTimer.TaskId, newTimer.TaskTitle, newTimer.EntryId, newTimer.StartTime);
+                            TimerState.SetActive(newTimer.TaskId, newTimer.TaskTitle, newTimer.BoardId, newTimer.BoardName, newTimer.EntryId, newTimer.StartTime);
                         await OnTimerAction.InvokeAsync();
                     }
                     catch
@@ -281,7 +284,7 @@
                         {
                             var fresh = await TimeEntryService.GetActiveTimerAsync();
                             if (fresh is not null)
-                                TimerState.SetActive(fresh.TaskId, fresh.TaskTitle, fresh.EntryId, fresh.StartTime);
+                                TimerState.SetActive(fresh.TaskId, fresh.TaskTitle, fresh.BoardId, fresh.BoardName, fresh.EntryId, fresh.StartTime);
                             else
                                 TimerState.Clear();
                         }
@@ -293,7 +296,7 @@
             {
                 var active = await TimeEntryService.GetActiveTimerAsync();
                 if (active is not null)
-                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.EntryId, active.StartTime);
+                    TimerState.SetActive(active.TaskId, active.TaskTitle, active.BoardId, active.BoardName, active.EntryId, active.StartTime);
             }
             else
             {

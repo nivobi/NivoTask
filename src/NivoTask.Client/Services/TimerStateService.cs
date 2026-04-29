@@ -6,6 +6,8 @@ public class TimerStateService : IDisposable
 {
     public int? ActiveTaskId { get; private set; }
     public string? ActiveTaskTitle { get; private set; }
+    public int? ActiveBoardId { get; private set; }
+    public string? ActiveBoardName { get; private set; }
     public int? ActiveEntryId { get; private set; }
     public DateTime? StartTime { get; private set; }
 
@@ -13,16 +15,18 @@ public class TimerStateService : IDisposable
         ? Math.Max(0, (int)(DateTime.UtcNow - StartTime.Value).TotalSeconds)
         : 0;
 
-    public bool IsRunning => ActiveTaskId.HasValue;
+    public bool IsRunning => ActiveEntryId.HasValue;
 
     public event Action? OnTimerChanged;
 
     private Timer? _ticker;
 
-    public void SetActive(int taskId, string taskTitle, int entryId, DateTime startTime)
+    public void SetActive(int? taskId, string? taskTitle, int boardId, string? boardName, int entryId, DateTime startTime)
     {
         ActiveTaskId = taskId;
         ActiveTaskTitle = taskTitle;
+        ActiveBoardId = boardId;
+        ActiveBoardName = boardName;
         ActiveEntryId = entryId;
         StartTime = startTime;
         StartTicking();
@@ -33,6 +37,8 @@ public class TimerStateService : IDisposable
     {
         ActiveTaskId = null;
         ActiveTaskTitle = null;
+        ActiveBoardId = null;
+        ActiveBoardName = null;
         ActiveEntryId = null;
         StartTime = null;
         StopTicking();

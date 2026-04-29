@@ -7,8 +7,10 @@ public class TimeEntry
     public DateTime? EndTime { get; set; }
     public int DurationSeconds { get; set; }
     public string? Notes { get; set; }
-    public int TaskId { get; set; }
-    public TaskItem Task { get; set; } = null!;
+    public int? TaskId { get; set; }
+    public TaskItem? Task { get; set; }
+    public int BoardId { get; set; }
+    public Board Board { get; set; } = null!;
     public string UserId { get; set; } = string.Empty;
     public AppUser User { get; set; } = null!;
 }

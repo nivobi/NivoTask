@@ -92,10 +92,22 @@ public class AppDbContext : IdentityDbContext<AppUser>
 
         builder.Entity<TimeEntry>(e =>
         {
+            // Task is now optional — free entries (board-level) have TaskId = null.
+            // SetNull on task delete preserves the entry against the board total.
             e.HasOne(te => te.Task)
              .WithMany(t => t.TimeEntries)
              .HasForeignKey(te => te.TaskId)
+             .OnDelete(DeleteBehavior.SetNull)
+             .IsRequired(false);
+
+            // Board is required and cascades — deleting a board removes all its entries.
+            e.HasOne(te => te.Board)
+             .WithMany()
+             .HasForeignKey(te => te.BoardId)
              .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasIndex(te => te.BoardId)
+             .HasDatabaseName("IX_TimeEntries_BoardId");
 
             e.HasOne(te => te.User)
              .WithMany()

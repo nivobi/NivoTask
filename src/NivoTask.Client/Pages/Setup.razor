@@ -81,12 +81,21 @@
 
                 @if (_connectionTested && _connectionSuccess)
                 {
-                    <MudAlert Severity="Severity.Success" Dense="true">Connection successful</MudAlert>
+                    @if (_existingDbDetected)
+                    {
+                        <MudAlert Severity="Severity.Info" Dense="true">
+                            Existing NivoTask database detected. Will adopt admin <b>@_existingAdminEmail</b> — admin/board steps will be skipped.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true">Connection successful</MudAlert>
+                    }
                 }
             }
 
             @* Step 2: Admin Account *@
-            @if (_currentStep == 2)
+            @if (_currentStep == 2 && !_existingDbDetected)
             {
                 <MudTextField @bind-Value="_adminEmail" Label="Email" Variant="Variant.Outlined"
                               InputType="InputType.Email" Class="mb-3" />
@@ -97,7 +106,7 @@
             }
 
             @* Step 3: First Board *@
-            @if (_currentStep == 3)
+            @if (_currentStep == 3 && !_existingDbDetected)
             {
                 <MudSwitch @bind-Value="_createBoard" Label="Create a starter board" Color="Color.Secondary" Class="mb-3" />
                 @if (_createBoard)
@@ -108,6 +117,21 @@
                 <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
                     A board with To Do, In Progress, and Done columns will be created for you.
                 </MudText>
+            }
+
+            @* Step 3.5: Adopt existing — confirmation card before final action *@
+            @if (_currentStep == 3 && _existingDbDetected)
+            {
+                <div class="d-flex flex-column align-center gap-3 py-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Large" Color="Color.Secondary" />
+                    <MudText Typo="Typo.body1" Align="Align.Center">
+                        Existing database detected.<br />
+                        Adopting admin <b>@_existingAdminEmail</b>.
+                    </MudText>
+                    <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+                        Click Complete to apply any pending migrations and finish.
+                    </MudText>
+                </div>
             }
 
             @* Setup complete *@
@@ -184,6 +208,8 @@
     private bool _testing;
     private bool _connectionTested;
     private bool _connectionSuccess;
+    private bool _existingDbDetected;
+    private string? _existingAdminEmail;
 
     // Admin fields
     private string _adminEmail = string.Empty;
@@ -209,10 +235,13 @@
     {
         0 => true,
         1 => _connectionTested && _connectionSuccess,
-        2 => !string.IsNullOrWhiteSpace(_adminEmail)
-             && _adminPassword.Length >= 8
-             && _adminPassword == _adminPasswordConfirm,
-        3 => !_createBoard || !string.IsNullOrWhiteSpace(_boardName),
+        2 => _existingDbDetected
+             || (!string.IsNullOrWhiteSpace(_adminEmail)
+                 && _adminPassword.Length >= 8
+                 && _adminPassword == _adminPasswordConfirm),
+        3 => _existingDbDetected
+             || !_createBoard
+             || !string.IsNullOrWhiteSpace(_boardName),
         _ => false
     };
 
@@ -221,9 +250,16 @@
         _errorMessage = null;
         _successMessage = null;
 
-        if (_currentStep == 2 && _adminPassword != _adminPasswordConfirm)
+        if (_currentStep == 2 && !_existingDbDetected && _adminPassword != _adminPasswordConfirm)
         {
             _errorMessage = "Passwords do not match.";
+            return;
+        }
+
+        // Skip admin + board steps when adopting an existing DB.
+        if (_currentStep == 1 && _existingDbDetected)
+        {
+            _currentStep = 3;
             return;
         }
 
@@ -234,7 +270,14 @@
     {
         _errorMessage = null;
         _successMessage = null;
-        if (_currentStep > 0) _currentStep--;
+        if (_currentStep > 0)
+        {
+            // Mirror the forward skip when going back.
+            if (_currentStep == 3 && _existingDbDetected)
+                _currentStep = 1;
+            else
+                _currentStep--;
+        }
     }
 
     private async Task TestConnection()
@@ -243,6 +286,8 @@
         _errorMessage = null;
         _connectionTested = false;
         _connectionSuccess = false;
+        _existingDbDetected = false;
+        _existingAdminEmail = null;
 
         var request = new TestConnectionRequest
         {
@@ -253,12 +298,19 @@
             Password = _dbPassword
         };
 
-        var (success, error) = await SetupService.TestConnectionAsync(request);
+        var result = await SetupService.TestConnectionAsync(request);
         _connectionTested = true;
-        _connectionSuccess = success;
+        _connectionSuccess = result.Success;
 
-        if (!success)
-            _errorMessage = error ?? "Connection failed.";
+        if (result.Success)
+        {
+            _existingDbDetected = result.MigrationsApplied && result.HasExistingUser;
+            _existingAdminEmail = result.ExistingUserEmail;
+        }
+        else
+        {
+            _errorMessage = result.Error ?? "Connection failed.";
+        }
 
         _testing = false;
     }
@@ -269,19 +321,37 @@
         _completing = true;
         _errorMessage = null;
 
-        var request = new CompleteSetupRequest
-        {
-            Server = _dbServer,
-            Port = _dbPort,
-            Database = _dbName,
-            DbUsername = _dbUsername,
-            DbPassword = _dbPassword,
-            AdminEmail = _adminEmail,
-            AdminPassword = _adminPassword,
-            BoardName = _createBoard ? _boardName : null
-        };
+        bool success;
+        string? error;
 
-        var (success, error) = await SetupService.CompleteSetupAsync(request);
+        if (_existingDbDetected)
+        {
+            var adoptRequest = new AdoptExistingRequest
+            {
+                Server = _dbServer,
+                Port = _dbPort,
+                Database = _dbName,
+                DbUsername = _dbUsername,
+                DbPassword = _dbPassword
+            };
+            (success, error) = await SetupService.AdoptExistingAsync(adoptRequest);
+        }
+        else
+        {
+            var request = new CompleteSetupRequest
+            {
+                Server = _dbServer,
+                Port = _dbPort,
+                Database = _dbName,
+                DbUsername = _dbUsername,
+                DbPassword = _dbPassword,
+                AdminEmail = _adminEmail,
+                AdminPassword = _adminPassword,
+                BoardName = _createBoard ? _boardName : null
+            };
+            (success, error) = await SetupService.CompleteSetupAsync(request);
+        }
+
         _completing = false;
 
         if (success)

@@ -39,16 +39,45 @@ public class SetupController : ControllerBase
         var connectionString = BuildConnectionString(request.Server, request.Port, request.Database,
             request.Username, request.Password);
 
+        var response = new TestConnectionResponse();
         try
         {
             await using var connection = new MySqlConnection(connectionString);
             await connection.OpenAsync();
-            return Ok(new { success = true });
+            response.Success = true;
+
+            // Best-effort detection: does AspNetUsers exist? If so, count rows + read first email.
+            // Errors here are swallowed — connection itself is the contract.
+            try
+            {
+                await using var tableCmd = connection.CreateCommand();
+                tableCmd.CommandText =
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'AspNetUsers'";
+                var tableExists = Convert.ToInt32(await tableCmd.ExecuteScalarAsync()) > 0;
+                response.MigrationsApplied = tableExists;
+
+                if (tableExists)
+                {
+                    await using var userCmd = connection.CreateCommand();
+                    userCmd.CommandText = "SELECT Email FROM AspNetUsers ORDER BY Id LIMIT 1";
+                    var firstEmail = await userCmd.ExecuteScalarAsync() as string;
+                    response.HasExistingUser = !string.IsNullOrEmpty(firstEmail);
+                    response.ExistingUserEmail = firstEmail;
+                }
+            }
+            catch
+            {
+                // Swallow — fall through with defaults (fresh-flow path).
+            }
         }
         catch (Exception ex)
         {
-            return Ok(new { success = false, error = ex.Message });
+            response.Success = false;
+            response.Error = ex.Message;
         }
+
+        return Ok(response);
     }
 
     [HttpPost("complete")]
@@ -165,6 +194,92 @@ public class SetupController : ControllerBase
             });
 
             return Ok(new { success = true, message = "Setup complete. Application is restarting..." });
+        }
+        finally
+        {
+            _completeLock.Release();
+        }
+    }
+
+    [HttpPost("adopt-existing")]
+    public async Task<IActionResult> AdoptExisting([FromBody] AdoptExistingRequest request)
+    {
+        if (IsSetupComplete())
+            return NotFound();
+
+        if (!await _completeLock.WaitAsync(TimeSpan.Zero))
+            return Conflict(new { error = "Setup is already in progress." });
+
+        try
+        {
+            var connectionString = BuildConnectionString(request.Server, request.Port, request.Database,
+                request.DbUsername, request.DbPassword);
+
+            // 1. Validate connection + verify DB really has an existing admin user
+            try
+            {
+                await using var connection = new MySqlConnection(connectionString);
+                await connection.OpenAsync();
+
+                await using var tableCmd = connection.CreateCommand();
+                tableCmd.CommandText =
+                    "SELECT COUNT(*) FROM information_schema.TABLES " +
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'AspNetUsers'";
+                var tableExists = Convert.ToInt32(await tableCmd.ExecuteScalarAsync()) > 0;
+                if (!tableExists)
+                    return BadRequest(new { error = "Database has no NivoTask schema. Use the standard setup flow instead." });
+
+                await using var userCmd = connection.CreateCommand();
+                userCmd.CommandText = "SELECT COUNT(*) FROM AspNetUsers";
+                var userCount = Convert.ToInt32(await userCmd.ExecuteScalarAsync());
+                if (userCount < 1)
+                    return BadRequest(new { error = "Database has no admin user. Use the standard setup flow instead." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = $"Database connection failed: {ex.Message}" });
+            }
+
+            // 2. Write setup.json with SetupComplete = false (crash safety)
+            var setupPath = GetSetupFilePath();
+            var pendingJson = new
+            {
+                SetupComplete = false,
+                ConnectionStrings = new { DefaultConnection = connectionString }
+            };
+            await System.IO.File.WriteAllTextAsync(setupPath,
+                JsonSerializer.Serialize(pendingJson, new JsonSerializerOptions { WriteIndented = true }));
+
+            // 3. Apply any pending migrations (e.g. AddBoardScopedTimeEntries on a redeploy)
+            try
+            {
+                var optionsBuilder = new DbContextOptionsBuilder<AppDbContext>();
+                optionsBuilder.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString));
+                await using var db = new AppDbContext(optionsBuilder.Options);
+                await db.Database.MigrateAsync();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = $"Migration failed: {ex.Message}" });
+            }
+
+            // 4. Mark setup complete
+            var finalJson = new
+            {
+                SetupComplete = true,
+                ConnectionStrings = new { DefaultConnection = connectionString }
+            };
+            await System.IO.File.WriteAllTextAsync(setupPath,
+                JsonSerializer.Serialize(finalJson, new JsonSerializerOptions { WriteIndented = true }));
+
+            // 5. Trigger app shutdown — host auto-restarts
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(1500);
+                _lifetime.StopApplication();
+            });
+
+            return Ok(new { success = true, message = "Adopted existing database. Application is restarting..." });
         }
         finally
         {
