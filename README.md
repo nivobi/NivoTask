@@ -71,6 +71,21 @@ The API hosts the WASM static files in production, so you ship one process.
 
 Manual updates: stop the process, replace the install dir contents with the new release, restart.
 
+### IIS deployments
+
+Self-update on IIS is opt-in. To enable:
+
+1. Grant the app pool identity Modify permissions on the install directory:
+   ```
+   icacls "C:\path\to\NivoTask" /grant "IIS APPPOOL\<pool-name>:(OI)(CI)M"
+   ```
+2. Add `"AllowIisSelfUpdate": true` to `setup.json`.
+3. Restart the app pool once.
+
+The updater then drops `app_offline.htm` so AspNetCoreModule shuts the worker (releasing DLL locks), xcopies the new files, and removes `app_offline.htm` so IIS respawns the worker. Users see a "NivoTask is updating…" page for 5–10 seconds.
+
+**Recovery:** if an update fails mid-flight, the install dir is left with `app_offline.htm` containing the failure reason. Delete it manually and IIS will start the worker on the next request. Restore from your backup if files were partially overwritten.
+
 ## Build from source
 
 Requires .NET 10 SDK + EF Core CLI tool.

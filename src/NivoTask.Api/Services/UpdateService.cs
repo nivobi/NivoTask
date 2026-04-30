@@ -16,16 +16,22 @@ public class UpdateService
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<UpdateService> _log;
     private readonly IHostApplicationLifetime _lifetime;
+    private readonly bool _allowIisSelfUpdate;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private UpdateCheckResponse? _cached;
     private DateTime _cachedAt;
 
-    public UpdateService(IHttpClientFactory httpFactory, ILogger<UpdateService> log, IHostApplicationLifetime lifetime)
+    public UpdateService(
+        IHttpClientFactory httpFactory,
+        ILogger<UpdateService> log,
+        IHostApplicationLifetime lifetime,
+        IConfiguration config)
     {
         _httpFactory = httpFactory;
         _log = log;
         _lifetime = lifetime;
+        _allowIisSelfUpdate = config.GetValue<bool>("AllowIisSelfUpdate");
     }
 
     public string GetCurrentVersion()
@@ -120,17 +126,41 @@ public class UpdateService
         var stage = "init";
         try
         {
-            // Self-replace flow cannot work under IIS: AspNetCoreModule respawns the worker
-            // within ms of StopApplication() and holds locks on every runtime DLL, so xcopy
-            // can't overwrite. Refuse cleanly and tell the user to update via their deploy process.
-            if (Environment.GetEnvironmentVariable("ASPNETCORE_IIS_PHYSICAL_PATH") is not null
-                || Environment.GetEnvironmentVariable("APP_POOL_ID") is not null)
+            // IIS detection: ANCM sets these env vars for every hosted .NET process.
+            var isIis = Environment.GetEnvironmentVariable("ASPNETCORE_IIS_PHYSICAL_PATH") is not null
+                        || Environment.GetEnvironmentVariable("APP_POOL_ID") is not null;
+
+            if (isIis && !_allowIisSelfUpdate)
             {
                 return new UpdateStartResponse
                 {
                     Status = "manual-required",
-                    Message = "Self-update is disabled on IIS deployments. Download the latest release from GitHub and replace the files via your normal IIS deploy process."
+                    Stage = "iis-opt-in-required",
+                    Message = "Self-update is disabled on IIS by default. Add \"AllowIisSelfUpdate\": true to setup.json (and ensure the app pool identity has Modify on the install dir) to enable."
                 };
+            }
+
+            // Preflight: install dir must be writable by the running process so xcopy can succeed later.
+            if (isIis)
+            {
+                stage = "preflight-permissions";
+                var probeDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                var probePath = Path.Combine(probeDir, $".nivotask-write-probe-{Guid.NewGuid():N}");
+                try
+                {
+                    await File.WriteAllTextAsync(probePath, "ok", ct);
+                    File.Delete(probePath);
+                }
+                catch (Exception ex)
+                {
+                    return new UpdateStartResponse
+                    {
+                        Status = "manual-required",
+                        Stage = "preflight-permissions",
+                        Message = $"Install dir not writable by app pool identity: {ex.Message}",
+                        ExceptionType = ex.GetType().Name
+                    };
+                }
             }
 
             stage = "check";
@@ -187,7 +217,24 @@ public class UpdateService
             File.Delete(archivePath);
 
             stage = "script";
-            var updaterPath = WriteUpdaterScript(installDir, stagingDir, workDir);
+            // For IIS flow, copy the offline page template into workDir so the bat can drop it.
+            if (isIis)
+            {
+                var template = Path.Combine(installDir, "wwwroot", "app_offline.template.htm");
+                var offlineCopy = Path.Combine(workDir, "app_offline.htm");
+                if (File.Exists(template))
+                {
+                    File.Copy(template, offlineCopy, overwrite: true);
+                }
+                else
+                {
+                    // Minimal fallback if the template is missing for any reason.
+                    await File.WriteAllTextAsync(offlineCopy,
+                        "<!doctype html><meta http-equiv=\"refresh\" content=\"5\"><title>Updating…</title><h1>NivoTask is updating</h1>",
+                        ct);
+                }
+            }
+            var updaterPath = WriteUpdaterScript(installDir, stagingDir, workDir, isIis);
             _log.LogInformation("Spawning updater {Path}", updaterPath);
 
             stage = "spawn";
@@ -200,12 +247,16 @@ public class UpdateService
             };
             Process.Start(psi);
 
-            // Schedule shutdown so the response is flushed first
-            _ = Task.Run(async () =>
+            // Non-IIS: schedule explicit shutdown so the bat's `start exe` can take over.
+            // IIS: ANCM stops the worker as soon as the bat drops app_offline.htm — no explicit stop.
+            if (!isIis)
             {
-                await Task.Delay(500);
-                _lifetime.StopApplication();
-            }, CancellationToken.None);
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(500);
+                    _lifetime.StopApplication();
+                }, CancellationToken.None);
+            }
 
             return new UpdateStartResponse
             {
@@ -232,19 +283,48 @@ public class UpdateService
         }
     }
 
-    private static string WriteUpdaterScript(string installDir, string stagingDir, string workDir)
+    private static string WriteUpdaterScript(string installDir, string stagingDir, string workDir, bool useIisFlow)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var bat = Path.Combine(workDir, "nivotask-updater.bat");
-            var content = $"""
-                @echo off
-                timeout /t 3 /nobreak >nul
-                xcopy "{stagingDir}\*" "{installDir}\" /E /Y /I /Q
-                rmdir /s /q "{stagingDir}"
-                start "NivoTask" "{installDir}\NivoTask.Api.exe"
-                del "%~f0"
-                """;
+            string content;
+            if (useIisFlow)
+            {
+                // IIS flow: drop app_offline.htm so ANCM stops worker (releases DLL locks),
+                // xcopy over install dir, remove app_offline.htm so ANCM respawns worker.
+                // On failure, leave app_offline.htm with an error message in place.
+                content = $"""
+                    @echo off
+                    setlocal enabledelayedexpansion
+                    timeout /t 3 /nobreak >nul
+                    copy /Y "{workDir}\app_offline.htm" "{installDir}\app_offline.htm" >nul
+                    timeout /t 4 /nobreak >nul
+                    xcopy "{stagingDir}\*" "{installDir}\" /E /Y /I /Q
+                    if !errorlevel! neq 0 (
+                        echo ^<!doctype html^>^<meta charset="utf-8"^>^<title^>Update failed^</title^>^<h1^>NivoTask update failed^</h1^>^<p^>xcopy returned !errorlevel!. Restore from backup, then delete app_offline.htm to recover.^</p^> > "{installDir}\app_offline.htm"
+                        exit /b 1
+                    )
+                    if not exist "{installDir}\NivoTask.Api.exe" (
+                        echo ^<!doctype html^>^<meta charset="utf-8"^>^<title^>Update failed^</title^>^<h1^>NivoTask update failed^</h1^>^<p^>NivoTask.Api.exe missing after xcopy.^</p^> > "{installDir}\app_offline.htm"
+                        exit /b 1
+                    )
+                    rmdir /s /q "{stagingDir}"
+                    del /f /q "{installDir}\app_offline.htm"
+                    del /f /q "%~f0"
+                    """;
+            }
+            else
+            {
+                content = $"""
+                    @echo off
+                    timeout /t 3 /nobreak >nul
+                    xcopy "{stagingDir}\*" "{installDir}\" /E /Y /I /Q
+                    rmdir /s /q "{stagingDir}"
+                    start "NivoTask" "{installDir}\NivoTask.Api.exe"
+                    del "%~f0"
+                    """;
+            }
             File.WriteAllText(bat, content);
             return bat;
         }
