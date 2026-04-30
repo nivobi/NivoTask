@@ -197,35 +197,69 @@
 
     @if (!_loading && _heatmap is not null && _heatmap.Any(d => d.Seconds > 0))
     {
-        <div class="section-title">
-            <MudText Typo="Typo.h6" Style="font-weight: 600; letter-spacing: -0.02em;">Activity</MudText>
-        </div>
-        <div class="heatmap-card">
-            @{
-                var maxHm = Math.Max(1, _heatmap.Max(d => d.Seconds));
-                var weekCount = (_heatmap.Count + 6) / 7;
+        var weekStartDow = DayOfWeek.Monday;
+            var seconds = _heatmap.ToDictionary(h => h.Date.Date, h => h.Seconds);
+            var firstDate = _heatmap[0].Date.Date;
+            var today = DateTime.Now.Date;
+            var offset = ((int)firstDate.DayOfWeek - (int)weekStartDow + 7) % 7;
+            var gridStart = firstDate.AddDays(-offset);
+            var totalDays = (today - gridStart).Days + 1;
+            var weekCount = (totalDays + 6) / 7;
+            var maxHm = Math.Max(1, _heatmap.Max(d => d.Seconds));
+            var totalSeconds = _heatmap.Sum(d => d.Seconds);
+
+            var monthLabels = new Dictionary<int, string>();
+            var seenMonth = "";
+            for (int w = 0; w < weekCount; w++)
+            {
+                var colDate = gridStart.AddDays(w * 7);
+                var label = colDate.ToString("MMM");
+                if (label != seenMonth) { monthLabels[w] = label; seenMonth = label; }
             }
-            <div class="heatmap-grid" style="grid-template-columns: repeat(@weekCount, 1fr);">
+            var dayNames = new[] { "Mon", "", "Wed", "", "Fri", "", "" };
+
+        <div class="heatmap-card">
+            <div class="heatmap-header">
+                <MudText Typo="Typo.h6" Style="font-weight: 600; letter-spacing: -0.02em;">
+                    Activity · last 12 weeks
+                </MudText>
+                <span class="heatmap-total">@FormatHm(totalSeconds) tracked</span>
+            </div>
+            <div class="heatmap-months" style="grid-template-columns: 32px repeat(@weekCount, 1fr);">
+                <div></div>
+                @for (int w = 0; w < weekCount; w++)
+                {
+                    <div class="heatmap-month-label">@(monthLabels.TryGetValue(w, out var m) ? m : "")</div>
+                }
+            </div>
+            <div class="heatmap-grid" style="grid-template-columns: 32px repeat(@weekCount, 1fr);">
+                <div class="heatmap-rowlabels">
+                    @foreach (var name in dayNames)
+                    {
+                        <div class="heatmap-row-label">@name</div>
+                    }
+                </div>
                 @for (int w = 0; w < weekCount; w++)
                 {
                     <div class="heatmap-col">
                         @for (int dow = 0; dow < 7; dow++)
                         {
-                            var idx = w * 7 + dow;
-                            if (idx < _heatmap.Count)
+                            var date = gridStart.AddDays(w * 7 + dow);
+                            if (date > today || date < firstDate)
                             {
-                                var d = _heatmap[idx];
-                                var bucket = d.Seconds == 0 ? 0
-                                    : d.Seconds < maxHm * 0.25 ? 1
-                                    : d.Seconds < maxHm * 0.5 ? 2
-                                    : d.Seconds < maxHm * 0.75 ? 3
-                                    : 4;
-                                <div class="heatmap-cell heatmap-bucket-@bucket"
-                                     title="@d.Date.ToString("ddd, MMM d") · @FormatHm(d.Seconds)"></div>
+                                <div class="heatmap-cell heatmap-bucket-empty"></div>
                             }
                             else
                             {
-                                <div class="heatmap-cell heatmap-bucket-empty"></div>
+                                var sec = seconds.TryGetValue(date, out var s) ? s : 0;
+                                var bucket = sec == 0 ? 0
+                                    : sec < maxHm * 0.25 ? 1
+                                    : sec < maxHm * 0.5 ? 2
+                                    : sec < maxHm * 0.75 ? 3
+                                    : 4;
+                                var isToday = date == today;
+                                <div class="heatmap-cell heatmap-bucket-@bucket @(isToday ? "today" : "")"
+                                     title="@date.ToString("ddd, MMM d") · @FormatHm(sec)"></div>
                             }
                         }
                     </div>
@@ -755,6 +789,54 @@
         margin-bottom: 36px;
     }
 
+    .heatmap-header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+    }
+
+    .heatmap-total {
+        font-size: 0.8125rem;
+        color: var(--mud-palette-text-secondary);
+        font-feature-settings: "tnum";
+    }
+
+    .heatmap-months {
+        display: grid;
+        gap: 3px;
+        margin-bottom: 4px;
+    }
+
+    .heatmap-month-label {
+        font-size: 0.625rem;
+        color: var(--mud-palette-text-secondary);
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 600;
+        line-height: 1;
+    }
+
+    .heatmap-rowlabels {
+        display: grid;
+        grid-template-rows: repeat(7, 1fr);
+        gap: 3px;
+        align-items: center;
+    }
+
+    .heatmap-row-label {
+        font-size: 0.625rem;
+        color: var(--mud-palette-text-secondary);
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 600;
+        line-height: 1;
+        padding-right: 4px;
+    }
+
     .heatmap-grid {
         display: grid;
         gap: 3px;
@@ -764,6 +846,12 @@
         display: grid;
         grid-template-rows: repeat(7, 1fr);
         gap: 3px;
+    }
+
+    .heatmap-cell.today {
+        outline: 1.5px solid var(--mud-palette-secondary);
+        outline-offset: 1px;
+        border-radius: 2px;
     }
 
     .heatmap-cell {
