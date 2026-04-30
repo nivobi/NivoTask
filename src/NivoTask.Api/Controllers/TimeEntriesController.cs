@@ -177,6 +177,111 @@ public class TimeEntriesController : ControllerBase
         });
     }
 
+    [HttpGet("time-entries/daily")]
+    public async Task<ActionResult<List<DailyTotalResponse>>> GetDaily([FromQuery] int days = 7)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (days < 1) days = 1;
+        if (days > 90) days = 90;
+
+        var todayStart = DateTime.Now.Date;
+        var rangeStart = todayStart.AddDays(-(days - 1));
+        var rangeStartUtc = rangeStart.ToUniversalTime();
+
+        var rows = await _db.TimeEntries
+            .Where(te => te.UserId == userId
+                      && (te.EndTime != null || te.StartTime == null)
+                      && te.DurationSeconds > 0)
+            .Select(te => new { te.DurationSeconds, te.EndTime, te.StartTime })
+            .ToListAsync();
+
+        var byDay = rows
+            .Select(r => new { r.DurationSeconds, Stamp = (r.EndTime ?? r.StartTime ?? DateTime.UtcNow).ToLocalTime().Date })
+            .Where(x => x.Stamp >= rangeStart)
+            .GroupBy(x => x.Stamp)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.DurationSeconds));
+
+        var result = new List<DailyTotalResponse>(days);
+        for (int i = 0; i < days; i++)
+        {
+            var d = rangeStart.AddDays(i);
+            result.Add(new DailyTotalResponse
+            {
+                Date = d,
+                Seconds = byDay.TryGetValue(d, out var s) ? s : 0
+            });
+        }
+        return Ok(result);
+    }
+
+    [HttpGet("time-entries/top-tasks")]
+    public async Task<ActionResult<List<TopTaskResponse>>> GetTopTasks([FromQuery] int days = 7, [FromQuery] int take = 5)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (days < 1) days = 1;
+        if (days > 90) days = 90;
+        if (take < 1) take = 1;
+        if (take > 50) take = 50;
+
+        var rangeStart = DateTime.Now.Date.AddDays(-(days - 1));
+        var rangeStartUtc = rangeStart.ToUniversalTime();
+
+        var rows = await _db.TimeEntries
+            .Where(te => te.UserId == userId
+                      && te.TaskId != null
+                      && (te.EndTime != null || te.StartTime == null)
+                      && te.DurationSeconds > 0)
+            .Select(te => new { te.TaskId, te.DurationSeconds, te.EndTime, te.StartTime })
+            .ToListAsync();
+
+        var totals = rows
+            .Select(r => new { TaskId = r.TaskId!.Value, r.DurationSeconds, Stamp = r.EndTime ?? r.StartTime ?? DateTime.UtcNow })
+            .Where(x => x.Stamp >= rangeStartUtc)
+            .GroupBy(x => x.TaskId)
+            .Select(g => new { TaskId = g.Key, Seconds = g.Sum(x => x.DurationSeconds) })
+            .OrderByDescending(x => x.Seconds)
+            .Take(take)
+            .ToList();
+
+        if (totals.Count == 0) return Ok(new List<TopTaskResponse>());
+
+        var taskIds = totals.Select(t => t.TaskId).ToList();
+        var taskInfo = await _db.Tasks
+            .Where(t => taskIds.Contains(t.Id) && t.Column.Board.UserId == userId)
+            .Select(t => new
+            {
+                t.Id,
+                t.Title,
+                BoardId = t.Column.BoardId,
+                BoardName = t.Column.Board.Name,
+                BoardColor = t.Column.Board.Color
+            })
+            .ToListAsync();
+
+        var infoById = taskInfo.ToDictionary(t => t.Id);
+
+        var result = totals
+            .Where(t => infoById.ContainsKey(t.TaskId))
+            .Select(t =>
+            {
+                var info = infoById[t.TaskId];
+                return new TopTaskResponse
+                {
+                    TaskId = t.TaskId,
+                    TaskTitle = info.Title,
+                    BoardId = info.BoardId,
+                    BoardName = info.BoardName,
+                    BoardColor = info.BoardColor,
+                    Seconds = t.Seconds
+                };
+            })
+            .ToList();
+
+        return Ok(result);
+    }
+
     [HttpGet("tasks/{taskId}/time-entries")]
     public async Task<ActionResult<List<TimeEntryResponse>>> GetTimeEntries(int taskId)
     {

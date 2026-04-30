@@ -8,4 +8,6 @@ public class BoardSummaryResponse
     public string? Icon { get; set; }
     public int ColumnCount { get; set; }
     public int TaskCount { get; set; }
+    public int TodaySeconds { get; set; }
+    public int WeekSeconds { get; set; }
 }

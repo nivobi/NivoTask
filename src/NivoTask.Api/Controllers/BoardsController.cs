@@ -39,6 +39,43 @@ public class BoardsController : ControllerBase
             })
             .ToListAsync();
 
+        if (boards.Count == 0) return Ok(boards);
+
+        var todayStart = DateTime.Now.Date;
+        var weekStart = todayStart.AddDays(-6);
+        var todayStartUtc = todayStart.ToUniversalTime();
+        var weekStartUtc = weekStart.ToUniversalTime();
+        var boardIds = boards.Select(b => b.Id).ToList();
+
+        // Mirror rollup filter from GetBoardTimeSummary: stopped timers OR manual entries.
+        var rows = await _db.TimeEntries
+            .Where(te => te.UserId == userId
+                      && boardIds.Contains(te.BoardId)
+                      && (te.EndTime != null || te.StartTime == null)
+                      && te.DurationSeconds > 0)
+            .Select(te => new { te.BoardId, te.DurationSeconds, te.EndTime, te.StartTime })
+            .ToListAsync();
+
+        var stamped = rows
+            .Select(r => new { r.BoardId, r.DurationSeconds, Stamp = r.EndTime ?? r.StartTime ?? DateTime.UtcNow })
+            .ToList();
+
+        var weekByBoard = stamped
+            .Where(x => x.Stamp >= weekStartUtc)
+            .GroupBy(x => x.BoardId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.DurationSeconds));
+
+        var todayByBoard = stamped
+            .Where(x => x.Stamp >= todayStartUtc)
+            .GroupBy(x => x.BoardId)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.DurationSeconds));
+
+        foreach (var b in boards)
+        {
+            b.TodaySeconds = todayByBoard.TryGetValue(b.Id, out var t) ? t : 0;
+            b.WeekSeconds = weekByBoard.TryGetValue(b.Id, out var w) ? w : 0;
+        }
+
         return Ok(boards);
     }
 
