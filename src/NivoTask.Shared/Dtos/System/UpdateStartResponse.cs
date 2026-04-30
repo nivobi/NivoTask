@@ -5,4 +5,6 @@ public class UpdateStartResponse
     public string Status { get; set; } = string.Empty;
     public string? Message { get; set; }
     public string? AssetName { get; set; }
+    public string? ExceptionType { get; set; }
+    public string? Stage { get; set; }
 }

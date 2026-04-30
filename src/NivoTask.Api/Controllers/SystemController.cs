@@ -26,7 +26,11 @@ public class SystemController : ControllerBase
     public async Task<ActionResult<UpdateStartResponse>> StartUpdate(CancellationToken ct)
     {
         var result = await _update.StartUpdateAsync(ct);
-        if (result.Status == "started") return Accepted(result);
-        return Ok(result);
+        return result.Status switch
+        {
+            "started" => Accepted(result),
+            "error" => StatusCode(500, result),
+            _ => Ok(result)
+        };
     }
 }

@@ -159,9 +159,20 @@
         try
         {
             var result = await SystemService.StartUpdateAsync();
+            if (result?.Status == "manual-required")
+            {
+                Snackbar.Add(result.Message ?? "Manual update required.", Severity.Info);
+                if (!string.IsNullOrEmpty(_check?.ReleaseUrl))
+                    Navigation.NavigateTo(_check.ReleaseUrl, forceLoad: true);
+                _updating = false;
+                StateHasChanged();
+                return;
+            }
             if (result is null || result.Status != "started")
             {
-                Snackbar.Add(result?.Message ?? "Could not start update.", Severity.Error);
+                var msg = result?.Message ?? "Could not start update.";
+                if (!string.IsNullOrEmpty(result?.Stage)) msg = $"[{result.Stage}] {msg}";
+                Snackbar.Add(msg, Severity.Error);
                 _updating = false;
                 StateHasChanged();
                 return;

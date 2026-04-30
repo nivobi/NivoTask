@@ -19,7 +19,17 @@ public class SystemService
     public async Task<UpdateStartResponse?> StartUpdateAsync()
     {
         var response = await _http.PostAsync("api/system/update", null);
-        if (!response.IsSuccessStatusCode) return null;
-        return await response.Content.ReadFromJsonAsync<UpdateStartResponse>();
+        try
+        {
+            return await response.Content.ReadFromJsonAsync<UpdateStartResponse>();
+        }
+        catch
+        {
+            return new UpdateStartResponse
+            {
+                Status = "error",
+                Message = $"HTTP {(int)response.StatusCode} (no JSON body)"
+            };
+        }
     }
 }

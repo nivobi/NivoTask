@@ -117,8 +117,23 @@ public class UpdateService
         if (!await _gate.WaitAsync(0, ct))
             return new UpdateStartResponse { Status = "in-progress", Message = "Update already in progress" };
 
+        var stage = "init";
         try
         {
+            // Self-replace flow cannot work under IIS: AspNetCoreModule respawns the worker
+            // within ms of StopApplication() and holds locks on every runtime DLL, so xcopy
+            // can't overwrite. Refuse cleanly and tell the user to update via their deploy process.
+            if (Environment.GetEnvironmentVariable("ASPNETCORE_IIS_PHYSICAL_PATH") is not null
+                || Environment.GetEnvironmentVariable("APP_POOL_ID") is not null)
+            {
+                return new UpdateStartResponse
+                {
+                    Status = "manual-required",
+                    Message = "Self-update is disabled on IIS deployments. Download the latest release from GitHub and replace the files via your normal IIS deploy process."
+                };
+            }
+
+            stage = "check";
             var check = await CheckAsync(useCache: false, ct);
             if (!check.IsUpdateAvailable)
                 return new UpdateStartResponse { Status = "already-current", Message = "Already on latest version" };
@@ -129,17 +144,20 @@ public class UpdateService
                     Message = $"No release asset for runtime '{GetCurrentRid()}'"
                 };
 
+            stage = "prepare";
             var installDir = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            var parentDir = Path.GetDirectoryName(installDir) ?? installDir;
-            var stagingDir = Path.Combine(parentDir, "nivotask-update-staging");
-            var archivePath = Path.Combine(parentDir, check.AssetName ?? "nivotask-update.zip");
+            // Use OS temp dir — guaranteed writable by the running process across hosting models.
+            var workDir = Path.Combine(Path.GetTempPath(), "nivotask-update");
+            Directory.CreateDirectory(workDir);
+            var stagingDir = Path.Combine(workDir, "staging");
+            var archivePath = Path.Combine(workDir, check.AssetName ?? "nivotask-update.zip");
 
             // Clean staging
             if (Directory.Exists(stagingDir)) Directory.Delete(stagingDir, recursive: true);
             Directory.CreateDirectory(stagingDir);
             if (File.Exists(archivePath)) File.Delete(archivePath);
 
-            // Download
+            stage = "download";
             _log.LogInformation("Downloading update {Asset} to {Path}", check.AssetName, archivePath);
             var http = _httpFactory.CreateClient("github");
             using (var resp = await http.GetAsync(check.AssetUrl, HttpCompletionOption.ResponseHeadersRead, ct))
@@ -149,7 +167,7 @@ public class UpdateService
                 await resp.Content.CopyToAsync(fs, ct);
             }
 
-            // Extract
+            stage = "extract";
             _log.LogInformation("Extracting to {Staging}", stagingDir);
             if (archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
             {
@@ -168,16 +186,17 @@ public class UpdateService
 
             File.Delete(archivePath);
 
-            // Write updater script
-            var updaterPath = WriteUpdaterScript(installDir, stagingDir);
+            stage = "script";
+            var updaterPath = WriteUpdaterScript(installDir, stagingDir, workDir);
             _log.LogInformation("Spawning updater {Path}", updaterPath);
 
+            stage = "spawn";
             var psi = new ProcessStartInfo
             {
                 FileName = updaterPath,
                 UseShellExecute = true,
                 CreateNoWindow = true,
-                WorkingDirectory = parentDir
+                WorkingDirectory = workDir
             };
             Process.Start(psi);
 
@@ -195,18 +214,29 @@ public class UpdateService
                 AssetName = check.AssetName
             };
         }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            _log.LogError(ex, "Update failed at stage {Stage}", stage);
+            return new UpdateStartResponse
+            {
+                Status = "error",
+                Message = ex.Message,
+                ExceptionType = ex.GetType().Name,
+                Stage = stage
+            };
+        }
         finally
         {
             _gate.Release();
         }
     }
 
-    private static string WriteUpdaterScript(string installDir, string stagingDir)
+    private static string WriteUpdaterScript(string installDir, string stagingDir, string workDir)
     {
-        var parentDir = Path.GetDirectoryName(installDir)!;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            var bat = Path.Combine(parentDir, "nivotask-updater.bat");
+            var bat = Path.Combine(workDir, "nivotask-updater.bat");
             var content = $"""
                 @echo off
                 timeout /t 3 /nobreak >nul
@@ -220,7 +250,7 @@ public class UpdateService
         }
         else
         {
-            var sh = Path.Combine(parentDir, "nivotask-updater.sh");
+            var sh = Path.Combine(workDir, "nivotask-updater.sh");
             var exeName = "NivoTask.Api";
             var content = $"""
                 #!/bin/sh
