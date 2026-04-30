@@ -58,4 +58,11 @@ public class TaskService
 
     public async Task<List<ActivityEntryResponse>> GetActivityAsync(int taskId)
         => await _http.GetFromJsonAsync<List<ActivityEntryResponse>>($"api/tasks/{taskId}/activity") ?? [];
+
+    public async Task<List<TaskSearchResult>> SearchTasksAsync(string query, int limit = 20)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return [];
+        var encoded = Uri.EscapeDataString(query);
+        return await _http.GetFromJsonAsync<List<TaskSearchResult>>($"api/tasks/search?q={encoded}&limit={limit}") ?? [];
+    }
 }

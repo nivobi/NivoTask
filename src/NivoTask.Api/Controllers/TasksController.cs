@@ -55,6 +55,40 @@ public class TasksController : ControllerBase
         return CreatedAtAction(nameof(GetTask), new { taskId = task.Id }, ToTaskResponse(task));
     }
 
+    [HttpGet("tasks/search")]
+    public async Task<ActionResult<List<TaskSearchResult>>> SearchTasks([FromQuery] string? q, [FromQuery] int limit = 20)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrWhiteSpace(q)) return Ok(new List<TaskSearchResult>());
+        if (limit < 1) limit = 1;
+        if (limit > 50) limit = 50;
+
+        var pattern = $"%{q.Trim()}%";
+
+        var results = await _db.Tasks
+            .Where(t => t.Column.Board.UserId == userId
+                     && !t.Column.Board.IsArchived
+                     && EF.Functions.Like(t.Title, pattern))
+            .OrderBy(t => t.ParentTaskId == null ? 0 : 1)
+            .ThenByDescending(t => t.Id)
+            .Take(limit)
+            .Select(t => new TaskSearchResult
+            {
+                TaskId = t.Id,
+                Title = t.Title,
+                ParentTaskId = t.ParentTaskId,
+                BoardId = t.Column.BoardId,
+                BoardName = t.Column.Board.Name,
+                BoardColor = t.Column.Board.Color,
+                ColumnName = t.Column.Name,
+                IsDone = t.IsDone
+            })
+            .ToListAsync();
+
+        return Ok(results);
+    }
+
     [HttpGet("tasks/{taskId}")]
     public async Task<ActionResult<TaskDetailResponse>> GetTask(int taskId)
     {

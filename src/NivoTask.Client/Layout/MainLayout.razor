@@ -72,6 +72,10 @@
     </MudDrawer>
 </MudLayout>
 
+<SearchPalette IsOpen="_searchOpen"
+               OnClose="() => { _searchOpen = false; StateHasChanged(); }"
+               OnPick="HandleSearchPick" />
+
 @if (_showShortcutsHelp)
 {
     <div class="shortcuts-overlay" @onclick="() => _showShortcutsHelp = false">
@@ -201,7 +205,11 @@
     private int _selectedTaskId;
     private bool _timerLoaded;
     private bool _showShortcutsHelp;
+    private bool _searchOpen;
     private DotNetObjectReference<MainLayout>? _keyboardRef;
+    private DotNetObjectReference<MainLayout>? _idleRef;
+    private DateTime _idleCooldownUntil = DateTime.MinValue;
+    private bool _idlePromptOpen;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -216,6 +224,10 @@
             // Init keyboard shortcuts
             _keyboardRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("NivoTaskKeyboard.init", _keyboardRef);
+
+            // Init idle detector (5 min threshold)
+            _idleRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("NivoTaskIdle.init", _idleRef, 300);
 
             if (!_timerLoaded)
             {
@@ -371,16 +383,144 @@
                 if (shift) { _showShortcutsHelp = !_showShortcutsHelp; StateHasChanged(); }
                 break;
             case "k" when ctrlOrMeta:
-                // Focus search — handled by Board.razor via JS
+                _searchOpen = true;
+                StateHasChanged();
                 break;
         }
         await Task.CompletedTask;
+    }
+
+    [JSInvokable]
+    public async Task OnIdle(int idleSeconds)
+    {
+        if (!TimerState.IsRunning) return;
+        if (_idlePromptOpen) return;
+        if (DateTime.UtcNow < _idleCooldownUntil) return;
+
+        _idlePromptOpen = true;
+        try
+        {
+            var taskTitle = TimerState.ActiveTaskTitle ?? TimerState.ActiveBoardName;
+            var parameters = new DialogParameters<IdlePromptDialog>
+            {
+                { x => x.IdleSeconds, idleSeconds },
+                { x => x.TaskTitle, taskTitle }
+            };
+            var dialog = await DialogService.ShowAsync<IdlePromptDialog>("",
+                parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, NoHeader = true, BackdropClick = false });
+            var result = await dialog.Result;
+
+            try { await JS.InvokeVoidAsync("NivoTaskIdle.bump"); } catch { }
+
+            if (result is null || result.Canceled || result.Data is not IdlePromptDialog.IdleAction action)
+            {
+                _idleCooldownUntil = DateTime.UtcNow.AddMinutes(5);
+                return;
+            }
+
+            switch (action)
+            {
+                case IdlePromptDialog.IdleAction.Keep:
+                    _idleCooldownUntil = DateTime.UtcNow.AddMinutes(5);
+                    break;
+                case IdlePromptDialog.IdleAction.Discard:
+                    await DiscardActiveTimer();
+                    break;
+                case IdlePromptDialog.IdleAction.Trim:
+                    await TrimActiveTimer(idleSeconds);
+                    break;
+            }
+        }
+        finally
+        {
+            _idlePromptOpen = false;
+        }
+    }
+
+    private async Task DiscardActiveTimer()
+    {
+        var entryId = TimerState.ActiveEntryId;
+        var taskId = TimerState.ActiveTaskId;
+        var boardId = TimerState.ActiveBoardId;
+        try
+        {
+            if (taskId.HasValue)
+                await TimeEntryService.StopTimerAsync(taskId.Value);
+            else if (boardId.HasValue)
+                await TimeEntryService.StopBoardTimerAsync(boardId.Value);
+            TimerState.Clear();
+            if (entryId.HasValue)
+            {
+                try { await TimeEntryService.DeleteTimeEntryAsync(entryId.Value); } catch { }
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private async Task TrimActiveTimer(int idleSeconds)
+    {
+        var taskId = TimerState.ActiveTaskId;
+        var boardId = TimerState.ActiveBoardId;
+        var entryId = TimerState.ActiveEntryId;
+        var elapsed = TimerState.ElapsedSeconds;
+        var keptSeconds = Math.Max(0, elapsed - idleSeconds);
+
+        try
+        {
+            if (taskId.HasValue)
+                await TimeEntryService.StopTimerAsync(taskId.Value);
+            else if (boardId.HasValue)
+                await TimeEntryService.StopBoardTimerAsync(boardId.Value);
+            TimerState.Clear();
+
+            if (entryId.HasValue)
+            {
+                try { await TimeEntryService.DeleteTimeEntryAsync(entryId.Value); } catch { }
+            }
+
+            if (keptSeconds >= 60)
+            {
+                var keptMinutes = keptSeconds / 60;
+                if (taskId.HasValue)
+                {
+                    await TimeEntryService.CreateManualEntryAsync(taskId.Value,
+                        new NivoTask.Shared.Dtos.TimeEntries.CreateTimeEntryRequest
+                        {
+                            DurationMinutes = keptMinutes
+                        });
+                }
+                else if (boardId.HasValue)
+                {
+                    await TimeEntryService.CreateBoardManualEntryAsync(boardId.Value,
+                        new NivoTask.Shared.Dtos.TimeEntries.CreateBoardTimeEntryRequest
+                        {
+                            DurationMinutes = keptMinutes
+                        });
+                }
+            }
+        }
+        catch { }
+        StateHasChanged();
+    }
+
+    private void HandleSearchPick(NivoTask.Shared.Dtos.Tasks.TaskSearchResult r)
+    {
+        var openId = r.ParentTaskId ?? r.TaskId;
+        if (_currentBoardId != r.BoardId)
+        {
+            _searchOpen = false;
+            Navigation.NavigateTo($"/boards/{r.BoardId}");
+        }
+        OpenDetailPanel(openId);
     }
 
     public void Dispose()
     {
         _themeService.OnThemeChanged -= HandleThemeChanged;
         try { _ = JS.InvokeVoidAsync("NivoTaskKeyboard.dispose"); } catch { }
+        try { _ = JS.InvokeVoidAsync("NivoTaskIdle.dispose"); } catch { }
         _keyboardRef?.Dispose();
+        _idleRef?.Dispose();
     }
 }

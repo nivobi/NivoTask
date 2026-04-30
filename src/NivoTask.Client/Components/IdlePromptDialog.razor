@@ -1,0 +1,41 @@
+<MudDialog>
+    <DialogContent>
+        <div style="padding: 8px 4px;">
+            <MudText Typo="Typo.h6" Style="font-weight: 600; letter-spacing: -0.01em;">Still working?</MudText>
+            <MudText Typo="Typo.body2" Style="margin-top: 8px; color: var(--mud-palette-text-secondary);">
+                Timer has been running but no activity detected for <strong>@FormatMinutes(IdleSeconds)</strong>.
+                @if (!string.IsNullOrEmpty(TaskTitle))
+                {
+                    <span> Tracking <strong>@TaskTitle</strong>.</span>
+                }
+            </MudText>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => Result(IdleAction.Discard))" Color="Color.Error" Variant="Variant.Text">
+            Discard
+        </MudButton>
+        <MudButton OnClick="@(() => Result(IdleAction.Trim))" Color="Color.Default" Variant="Variant.Text">
+            Trim @FormatMinutes(IdleSeconds)
+        </MudButton>
+        <MudButton OnClick="@(() => Result(IdleAction.Keep))" Color="Color.Primary" Variant="Variant.Filled">
+            Keep
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int IdleSeconds { get; set; }
+    [Parameter] public string? TaskTitle { get; set; }
+
+    public enum IdleAction { Keep, Trim, Discard }
+
+    private void Result(IdleAction action) => MudDialog.Close(DialogResult.Ok(action));
+
+    private static string FormatMinutes(int seconds)
+    {
+        var m = Math.Max(1, seconds / 60);
+        return m == 1 ? "1 minute" : $"{m} minutes";
+    }
+}

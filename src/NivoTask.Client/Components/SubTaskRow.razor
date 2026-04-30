@@ -78,28 +78,51 @@
                             <div class="entry-row d-flex align-center" style="gap: 8px; padding: 3px 0; border-radius: 4px;" @onmouseenter="() => _hoveredEntryId = entry.Id" @onmouseleave="() => _hoveredEntryId = 0">
                                 <MudIcon Icon="@(entry.IsManual ? Icons.Material.Outlined.EditNote : Icons.Material.Outlined.Timer)"
                                          Size="Size.Small" Style="opacity: 0.2; font-size: 14px; flex-shrink: 0;" />
-                                <MudText Typo="Typo.body2" Style="font-size: 0.75rem; font-variant-numeric: tabular-nums; min-width: 44px;">
-                                    @FormatDuration(entry.DurationSeconds)
-                                </MudText>
-                                <MudText Typo="Typo.body2" Style="opacity: 0.3; font-size: 0.6875rem; min-width: 44px;">
-                                    @FormatEntryDate(entry)
-                                </MudText>
-                                @if (!string.IsNullOrEmpty(entry.Notes))
+                                @if (_editingEntryId == entry.Id)
                                 {
-                                    <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate"
-                                             Style="opacity: 0.4; font-size: 0.75rem;">
-                                        @entry.Notes
-                                    </MudText>
+                                    <MudNumericField T="int" @bind-Value="_editMinutes" Min="1" Max="1440"
+                                                     Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                     Style="max-width: 72px; font-size: 0.75rem;" />
+                                    <MudTextField T="string" @bind-Value="_editNotes" Placeholder="Notes..."
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense"
+                                                  Class="flex-grow-1" Immediate="true"
+                                                  OnKeyDown="(e) => HandleEntryEditKeyDown(e, entry)"
+                                                  Style="font-size: 0.75rem;" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Check" Size="Size.Small"
+                                                   Color="Color.Secondary" OnClick="() => SaveEntryEdit(entry)"
+                                                   Style="font-size: 14px;" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
+                                                   OnClick="CancelEntryEdit"
+                                                   Style="opacity: 0.4; font-size: 14px;" />
                                 }
                                 else
                                 {
-                                    <div class="flex-grow-1"></div>
-                                }
-                                @if (_hoveredEntryId == entry.Id)
-                                {
-                                    <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small"
-                                                   OnClick="() => DeleteEntry(entry)"
-                                                   Style="opacity: 0.3; font-size: 14px;" />
+                                    <MudText Typo="Typo.body2" Style="font-size: 0.75rem; font-variant-numeric: tabular-nums; min-width: 44px;">
+                                        @FormatDuration(entry.DurationSeconds)
+                                    </MudText>
+                                    <MudText Typo="Typo.body2" Style="opacity: 0.3; font-size: 0.6875rem; min-width: 44px;">
+                                        @FormatEntryDate(entry)
+                                    </MudText>
+                                    @if (!string.IsNullOrEmpty(entry.Notes))
+                                    {
+                                        <MudText Typo="Typo.body2" Class="flex-grow-1 mud-text-truncate"
+                                                 Style="opacity: 0.4; font-size: 0.75rem;">
+                                            @entry.Notes
+                                        </MudText>
+                                    }
+                                    else
+                                    {
+                                        <div class="flex-grow-1"></div>
+                                    }
+                                    @if (_hoveredEntryId == entry.Id)
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Outlined.Edit" Size="Size.Small"
+                                                       OnClick="() => StartEntryEdit(entry)"
+                                                       Style="opacity: 0.3; font-size: 14px;" />
+                                        <MudIconButton Icon="@Icons.Material.Outlined.Close" Size="Size.Small"
+                                                       OnClick="() => DeleteEntry(entry)"
+                                                       Style="opacity: 0.3; font-size: 14px;" />
+                                    }
                                 }
                             </div>
                         }
@@ -174,6 +197,9 @@
     private string? _manualNotes;
     private bool _saving;
     private int _totalSeconds;
+    private int _editingEntryId;
+    private int _editMinutes;
+    private string? _editNotes;
 
     protected override void OnInitialized()
     {
@@ -394,6 +420,57 @@
             catch { }
         }
         await OnDeleted.InvokeAsync(SubTask.Id);
+    }
+
+    private void StartEntryEdit(TimeEntryResponse entry)
+    {
+        _editingEntryId = entry.Id;
+        _editMinutes = Math.Max(1, entry.DurationSeconds / 60);
+        _editNotes = entry.Notes;
+    }
+
+    private void CancelEntryEdit()
+    {
+        _editingEntryId = 0;
+        _editMinutes = 0;
+        _editNotes = null;
+    }
+
+    private async Task HandleEntryEditKeyDown(KeyboardEventArgs e, TimeEntryResponse entry)
+    {
+        if (e.Key == "Enter") await SaveEntryEdit(entry);
+        else if (e.Key == "Escape") CancelEntryEdit();
+    }
+
+    private async Task SaveEntryEdit(TimeEntryResponse entry)
+    {
+        if (_editMinutes < 1 || _editMinutes > 1440) return;
+        var oldSeconds = entry.DurationSeconds;
+        var oldNotes = entry.Notes;
+        var newSeconds = _editMinutes * 60;
+        entry.DurationSeconds = newSeconds;
+        entry.Notes = _editNotes;
+        _totalSeconds += newSeconds - oldSeconds;
+        var entryId = _editingEntryId;
+        _editingEntryId = 0;
+        StateHasChanged();
+        try
+        {
+            await TimeEntryService.UpdateTimeEntryAsync(entryId, new UpdateTimeEntryRequest
+            {
+                DurationSeconds = newSeconds,
+                Notes = string.IsNullOrWhiteSpace(_editNotes) ? null : _editNotes
+            });
+            await OnTimerAction.InvokeAsync();
+        }
+        catch
+        {
+            entry.DurationSeconds = oldSeconds;
+            entry.Notes = oldNotes;
+            _totalSeconds -= newSeconds - oldSeconds;
+            Snackbar.Add("Could not update entry.", Severity.Error);
+            StateHasChanged();
+        }
     }
 
     private async Task DeleteEntry(TimeEntryResponse entry)
