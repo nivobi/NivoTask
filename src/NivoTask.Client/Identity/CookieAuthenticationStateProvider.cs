@@ -8,7 +8,6 @@ namespace NivoTask.Client.Identity;
 public class CookieAuthenticationStateProvider : AuthenticationStateProvider, IAccountManagement
 {
     private readonly HttpClient _httpClient;
-    private bool _authenticated;
     private readonly ClaimsPrincipal _unauthenticated = new(new ClaimsIdentity());
 
     public CookieAuthenticationStateProvider(IHttpClientFactory factory)
@@ -18,7 +17,6 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider, IA
 
     public override async Task<AuthenticationState> GetAuthenticationStateAsync()
     {
-        _authenticated = false;
         var user = _unauthenticated;
 
         try
@@ -32,7 +30,6 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider, IA
                     new(ClaimTypes.Email, info.Email)
                 };
                 user = new ClaimsPrincipal(new ClaimsIdentity(claims, nameof(CookieAuthenticationStateProvider)));
-                _authenticated = true;
             }
         }
         catch

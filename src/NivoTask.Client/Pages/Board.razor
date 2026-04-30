@@ -127,20 +127,19 @@ else
                                      AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
                                      Dense="true" Style="opacity: 0.3;">
                                 <MudMenuItem OnClick="() => StartEditingColumnName(column)"
-                                             Icon="@Icons.Material.Filled.Edit" IconSize="Size.Small">Rename</MudMenuItem>
+                                             Icon="@Icons.Material.Filled.Edit" >Rename</MudMenuItem>
                                 @if (!column.IsDone)
                                 {
                                     <MudMenuItem OnClick="() => ToggleColumnDone(column)"
-                                                 Icon="@Icons.Material.Filled.CheckCircleOutline" IconSize="Size.Small">Mark as Done column</MudMenuItem>
+                                                 Icon="@Icons.Material.Filled.CheckCircleOutline" >Mark as Done column</MudMenuItem>
                                 }
                                 else
                                 {
                                     <MudMenuItem OnClick="() => ToggleColumnDone(column)"
-                                                 Icon="@Icons.Material.Filled.RemoveCircleOutline" IconSize="Size.Small">Unmark Done column</MudMenuItem>
+                                                 Icon="@Icons.Material.Filled.RemoveCircleOutline" >Unmark Done column</MudMenuItem>
                                 }
                                 <MudMenuItem OnClick="() => DeleteColumn(column)"
-                                             Icon="@Icons.Material.Filled.Delete" IconSize="Size.Small"
-                                             Disabled="@(_taskItems.Any(t => t.ColumnIdentifier == column.Id.ToString()))">Delete column</MudMenuItem>
+                                             Icon="@Icons.Material.Filled.Delete"                                             Disabled="@(_taskItems.Any(t => t.ColumnIdentifier == column.Id.ToString()))">Delete column</MudMenuItem>
                             </MudMenu>
                         </div>
                     </div>
@@ -240,6 +239,7 @@ else
             if (updated is not null && existing is not null)
             {
                 existing.Title = updated.Title;
+                existing.IsDone = updated.IsDone;
                 existing.Priority = updated.Priority;
                 existing.DueDate = updated.DueDate;
                 existing.CoverColor = updated.CoverColor;

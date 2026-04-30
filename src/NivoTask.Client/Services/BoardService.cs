@@ -12,8 +12,23 @@ public class BoardService
     public BoardService(IHttpClientFactory factory)
         => _http = factory.CreateClient("Auth");
 
-    public async Task<List<BoardSummaryResponse>> GetBoardsAsync()
-        => await _http.GetFromJsonAsync<List<BoardSummaryResponse>>("api/boards") ?? [];
+    public async Task<List<BoardSummaryResponse>> GetBoardsAsync(bool includeArchived = false)
+        => await _http.GetFromJsonAsync<List<BoardSummaryResponse>>($"api/boards?archived={(includeArchived ? "true" : "false")}") ?? [];
+
+    public async Task<List<BoardSummaryResponse>> GetArchivedBoardsAsync()
+        => await _http.GetFromJsonAsync<List<BoardSummaryResponse>>("api/boards?archived=only") ?? [];
+
+    public async Task ArchiveBoardAsync(int boardId)
+    {
+        var response = await _http.PostAsync($"api/boards/{boardId}/archive", null);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task UnarchiveBoardAsync(int boardId)
+    {
+        var response = await _http.PostAsync($"api/boards/{boardId}/unarchive", null);
+        response.EnsureSuccessStatusCode();
+    }
 
     public async Task<BoardResponse?> GetBoardAsync(int boardId)
         => await _http.GetFromJsonAsync<BoardResponse>($"api/boards/{boardId}");
@@ -27,6 +42,7 @@ public class BoardService
             Title = d.Title,
             SortOrder = d.SortOrder,
             ColumnIdentifier = d.ColumnId.ToString(),
+            IsDone = d.IsDone,
             SubTaskCount = d.SubTaskCount,
             CompletedSubTaskCount = d.CompletedSubTaskCount,
             TotalTimeSeconds = d.TotalTimeSeconds,

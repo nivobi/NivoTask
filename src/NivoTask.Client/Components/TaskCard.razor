@@ -4,7 +4,7 @@
 @inject TaskService TaskService
 @inject TimerStateService TimerState
 
-<div class="task-card @(HasActiveTimer ? "timer-active" : "") @(Item.JustCompleted ? "just-completed" : "")" @onclick="HandleClick">
+<div class="task-card @(HasActiveTimer ? "timer-active" : "") @(Item.JustCompleted ? "just-completed" : "") @(Item.IsDone ? "task-done" : "")" @onclick="HandleClick">
     @if (!string.IsNullOrEmpty(Item.CoverColor))
     {
         <div class="task-card-cover" style="background: @Item.CoverColor;"></div>
@@ -30,7 +30,19 @@
         </div>
     }
 
-    <span class="task-card-title">@Item.Title</span>
+    <div class="task-card-title-row">
+        <div class="task-done-check @(Item.IsDone ? "checked" : "")"
+             @onclick="ToggleParentDone" @onclick:stopPropagation="true"
+             title="@(Item.IsDone ? "Mark as not done" : "Mark as done")">
+            @if (Item.IsDone)
+            {
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
+            }
+        </div>
+        <span class="task-card-title">@Item.Title</span>
+    </div>
 
     @if (!IsCompact && Item.SubTasks.Count > 0)
     {
@@ -129,6 +141,21 @@
     private async Task HandleClick()
     {
         await OnTaskClicked.InvokeAsync(Item.Id);
+    }
+
+    private async Task ToggleParentDone()
+    {
+        Item.IsDone = !Item.IsDone;
+        StateHasChanged();
+        try
+        {
+            await TaskService.ToggleDoneAsync(Item.Id);
+        }
+        catch
+        {
+            Item.IsDone = !Item.IsDone;
+            StateHasChanged();
+        }
     }
 
     private async Task ToggleDone(BoardSubTaskInfo sub)

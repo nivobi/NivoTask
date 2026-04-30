@@ -9,6 +9,7 @@ public class BoardTaskItem
     public string Title { get; set; } = string.Empty;
     public int SortOrder { get; set; }
     public string ColumnIdentifier { get; set; } = string.Empty;
+    public bool IsDone { get; set; }
     public int SubTaskCount { get; set; }
     public int CompletedSubTaskCount { get; set; }
     public int TotalTimeSeconds { get; set; }

@@ -11,6 +11,8 @@ public class Board
     public AppUser User { get; set; } = null!;
     public int? BackgroundType { get; set; }
     public string? BackgroundValue { get; set; }
+    public bool IsArchived { get; set; }
+    public DateTime? ArchivedAt { get; set; }
     public List<BoardColumn> Columns { get; set; } = [];
     public List<Label> Labels { get; set; } = [];
 }

@@ -17,8 +17,10 @@
                 Task Detail
             </MudText>
             <div class="d-flex align-center gap-1">
-                <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Size="Size.Small"
-                               OnClick="HandleDeleteTask" Style="opacity: 0.3;" Title="Delete task" />
+                <MudTooltip Text="Delete task">
+                    <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Size="Size.Small"
+                                   OnClick="HandleDeleteTask" Style="opacity: 0.3;" />
+                </MudTooltip>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small"
                                OnClick="OnClose" Style="opacity: 0.4;" />
             </div>

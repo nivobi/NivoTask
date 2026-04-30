@@ -155,26 +155,101 @@ public class TimeEntriesController : ControllerBase
 
         var todayStart = DateTime.Now.Date;
         var weekStart = todayStart.AddDays(-6);
+        var prevWeekStart = todayStart.AddDays(-13);
 
         var todayStartUtc = todayStart.ToUniversalTime();
         var weekStartUtc = weekStart.ToUniversalTime();
+        var prevWeekStartUtc = prevWeekStart.ToUniversalTime();
 
         var entries = await _db.TimeEntries
             .Where(te => te.UserId == userId && te.EndTime != null)
             .Select(te => new { te.DurationSeconds, Stamp = te.EndTime!.Value })
-            .Where(x => x.Stamp >= weekStartUtc)
+            .Where(x => x.Stamp >= prevWeekStartUtc)
             .ToListAsync();
 
         var today = entries.Where(e => e.Stamp >= todayStartUtc).ToList();
-        var week = entries;
+        var week = entries.Where(e => e.Stamp >= weekStartUtc).ToList();
+        var prevWeek = entries.Where(e => e.Stamp >= prevWeekStartUtc && e.Stamp < weekStartUtc).ToList();
 
         return Ok(new TimeSummaryResponse
         {
             TodaySeconds = today.Sum(e => e.DurationSeconds),
             WeekSeconds = week.Sum(e => e.DurationSeconds),
+            PreviousWeekSeconds = prevWeek.Sum(e => e.DurationSeconds),
             TodayEntryCount = today.Count,
             WeekEntryCount = week.Count
         });
+    }
+
+    [HttpGet("time-entries/export")]
+    public async Task<IActionResult> ExportTimeEntries([FromQuery] int days = 30, [FromQuery] int? boardId = null)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (days < 1) days = 1;
+        if (days > 3650) days = 3650;
+
+        var rangeStart = DateTime.Now.Date.AddDays(-(days - 1));
+        var rangeStartUtc = rangeStart.ToUniversalTime();
+
+        var query = _db.TimeEntries
+            .Where(te => te.UserId == userId
+                      && (te.EndTime != null || te.StartTime == null)
+                      && te.DurationSeconds > 0);
+        if (boardId.HasValue)
+            query = query.Where(te => te.BoardId == boardId.Value);
+
+        var rows = await query
+            .Select(te => new
+            {
+                te.DurationSeconds,
+                te.StartTime,
+                te.EndTime,
+                te.Notes,
+                BoardName = te.Board != null ? te.Board.Name : "",
+                TaskTitle = te.Task != null ? te.Task.Title : null
+            })
+            .ToListAsync();
+
+        var filtered = rows
+            .Select(r => new
+            {
+                r.DurationSeconds,
+                r.Notes,
+                r.BoardName,
+                r.TaskTitle,
+                IsManual = r.StartTime == null,
+                Stamp = r.EndTime ?? r.StartTime ?? DateTime.UtcNow
+            })
+            .Where(r => r.Stamp >= rangeStartUtc)
+            .OrderByDescending(r => r.Stamp)
+            .ToList();
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Date,Board,Task,DurationMinutes,Notes,IsManual");
+        foreach (var r in filtered)
+        {
+            var local = r.Stamp.ToLocalTime();
+            var minutes = Math.Round(r.DurationSeconds / 60.0, 2);
+            sb.Append(local.ToString("yyyy-MM-dd HH:mm")).Append(',');
+            sb.Append(CsvEscape(r.BoardName)).Append(',');
+            sb.Append(CsvEscape(r.TaskTitle ?? "")).Append(',');
+            sb.Append(minutes.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(',');
+            sb.Append(CsvEscape(r.Notes ?? "")).Append(',');
+            sb.AppendLine(r.IsManual ? "true" : "false");
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetPreamble().Concat(System.Text.Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        return File(bytes, "text/csv", $"nivotask-time-entries-{stamp}.csv");
+    }
+
+    private static string CsvEscape(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        var needsQuoting = value.Contains(',') || value.Contains('"') || value.Contains('\n') || value.Contains('\r');
+        var escaped = value.Replace("\"", "\"\"");
+        return needsQuoting ? $"\"{escaped}\"" : escaped;
     }
 
     [HttpGet("time-entries/daily")]

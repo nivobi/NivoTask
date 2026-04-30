@@ -29,9 +29,7 @@
         {
             <MudColorPicker @bind-Value="_pickerColor" Style="margin-bottom: 16px;"
                             ColorPickerMode="ColorPickerMode.HEX"
-                            DisableAlpha="true"
-                            DisableToolbar="false"
-                            DisablePreview="false" />
+                            ShowAlpha="false" />
         }
 
         <MudText Typo="Typo.body2" Style="font-weight: 600; opacity: 0.5; margin-bottom: 8px;">Icon</MudText>
@@ -98,9 +96,15 @@
         <MudDivider Class="my-4" />
 
         <MudText Typo="Typo.caption" Color="Color.Error" Class="mb-2">DANGER ZONE</MudText>
-        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteBoard">
-            Delete Board
-        </MudButton>
+        <div class="d-flex gap-2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ConfirmArchiveBoard"
+                       StartIcon="@Icons.Material.Outlined.Archive">
+                Archive Board
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteBoard">
+                Delete Permanently
+            </MudButton>
+        </div>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>
@@ -380,6 +384,30 @@
         finally
         {
             _saving = false;
+        }
+    }
+
+    private async Task ConfirmArchiveBoard()
+    {
+        var result = await DialogService.ShowMessageBoxAsync(
+            "Archive Board",
+            $"Archive \"{_boardName}\"? It will be hidden from your dashboard but tasks and time entries are preserved. You can restore it later.",
+            yesText: "Archive",
+            cancelText: "Cancel");
+
+        if (result == true)
+        {
+            try
+            {
+                await BoardService.ArchiveBoardAsync(BoardId);
+                Snackbar.Add("Board archived.", Severity.Success);
+                MudDialog.Close(DialogResult.Ok("archived"));
+                Navigation.NavigateTo("/");
+            }
+            catch
+            {
+                Snackbar.Add("Could not archive board. Please try again.", Severity.Error);
+            }
         }
     }
 

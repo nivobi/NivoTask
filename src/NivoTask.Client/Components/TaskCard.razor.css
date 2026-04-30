@@ -78,6 +78,39 @@
     color: #FF453A;
 }
 
+.task-card-title-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.task-done-check {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid var(--mud-palette-action-disabled);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2px;
+    cursor: pointer;
+    transition:
+        background var(--duration-fast) var(--ease-standard),
+        border-color var(--duration-fast) var(--ease-standard),
+        transform var(--duration-fast) var(--ease-spring);
+}
+
+.task-done-check:hover {
+    border-color: var(--mud-palette-text-secondary);
+}
+
+.task-done-check.checked {
+    background: #36b37e;
+    border-color: #36b37e;
+    animation: checkPop 0.25s var(--ease-spring);
+}
+
 .task-card-title {
     display: block;
     font-size: 0.875rem;
@@ -86,6 +119,13 @@
     color: var(--mud-palette-text-primary);
     word-wrap: break-word;
     overflow-wrap: break-word;
+    flex: 1;
+    min-width: 0;
+}
+
+.task-card.task-done .task-card-title {
+    text-decoration: line-through;
+    opacity: 0.45;
 }
 
 /* Subtask checklist */

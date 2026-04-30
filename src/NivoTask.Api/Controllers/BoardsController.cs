@@ -21,12 +21,17 @@ public class BoardsController : ControllerBase
     public BoardsController(AppDbContext db) => _db = db;
 
     [HttpGet]
-    public async Task<ActionResult<List<BoardSummaryResponse>>> GetBoards()
+    public async Task<ActionResult<List<BoardSummaryResponse>>> GetBoards([FromQuery] string? archived = null)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        var boards = await _db.Boards
-            .Where(b => b.UserId == userId)
+        var query = _db.Boards.Where(b => b.UserId == userId);
+        if (string.Equals(archived, "only", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(b => b.IsArchived);
+        else if (!string.Equals(archived, "true", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(b => !b.IsArchived);
+
+        var boards = await query
             .OrderBy(b => b.Name)
             .Select(b => new BoardSummaryResponse
             {
@@ -119,6 +124,7 @@ public class BoardsController : ControllerBase
                 Title = t.Title,
                 SortOrder = t.SortOrder,
                 ColumnId = t.ColumnId,
+                IsDone = t.IsDone,
                 SubTaskCount = t.SubTasks.Count,
                 CompletedSubTaskCount = t.SubTasks.Count(s => s.IsDone),
                 Priority = t.Priority,
@@ -197,6 +203,42 @@ public class BoardsController : ControllerBase
         board.BackgroundType = request.BackgroundType;
         board.BackgroundValue = request.BackgroundValue;
 
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("{boardId}/archive")]
+    public async Task<IActionResult> ArchiveBoard(int boardId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var board = await _db.Boards
+            .Where(b => b.Id == boardId && b.UserId == userId)
+            .FirstOrDefaultAsync();
+
+        if (board is null) return NotFound();
+        if (board.IsArchived) return NoContent();
+
+        board.IsArchived = true;
+        board.ArchivedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("{boardId}/unarchive")]
+    public async Task<IActionResult> UnarchiveBoard(int boardId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var board = await _db.Boards
+            .Where(b => b.Id == boardId && b.UserId == userId)
+            .FirstOrDefaultAsync();
+
+        if (board is null) return NotFound();
+        if (!board.IsArchived) return NoContent();
+
+        board.IsArchived = false;
+        board.ArchivedAt = null;
         await _db.SaveChangesAsync();
         return NoContent();
     }

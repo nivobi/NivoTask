@@ -13,12 +13,19 @@
 
 <div class="dashboard-root">
     <div class="dashboard-header">
-        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-weight: 500;">
-            @_dateLabel
-        </MudText>
-        <MudText Typo="Typo.h3" Style="font-weight: 600; letter-spacing: -0.03em; margin-top: 4px;">
-            @_greeting@(string.IsNullOrEmpty(_userName) ? "" : $", {_userName}")
-        </MudText>
+        <div class="dashboard-header-text">
+            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); font-weight: 500;">
+                @_dateLabel
+            </MudText>
+            <MudText Typo="Typo.h3" Style="font-weight: 600; letter-spacing: -0.03em; margin-top: 4px;">
+                @_greeting@(string.IsNullOrEmpty(_userName) ? "" : $", {_userName}")
+            </MudText>
+        </div>
+        <a class="export-link" href="api/time-entries/export?days=30" target="_self"
+           title="Download last 30 days of time entries as CSV">
+            <MudIcon Icon="@Icons.Material.Outlined.FileDownload" Style="font-size: 16px;" />
+            Export CSV
+        </a>
     </div>
 
     @if (TimerState.IsRunning)
@@ -92,7 +99,19 @@
                 else { @FormatHm(_summary?.WeekSeconds ?? 0) }
             </div>
             <div class="stat-sub">
-                @if (!_loading) { @($"{_summary?.WeekEntryCount ?? 0} entries") }
+                @if (!_loading)
+                {
+                    @($"{_summary?.WeekEntryCount ?? 0} entries")
+                    @if (_summary is not null && _summary.PreviousWeekSeconds > 0)
+                    {
+                        var delta = _summary.WeekSeconds - _summary.PreviousWeekSeconds;
+                        var sign = delta >= 0 ? "+" : "−";
+                        var cls = delta >= 0 ? "delta-up" : "delta-down";
+                        <span class="stat-delta @cls" title="Compared to previous 7 days">
+                            @sign@FormatHm(Math.Abs(delta)) vs prev
+                        </span>
+                    }
+                }
             </div>
             @if (!_loading && _daily is not null && _daily.Count > 0)
             {
@@ -201,6 +220,35 @@
             }
         </div>
     }
+
+    @if (!_loading && _archivedBoards is not null && _archivedBoards.Count > 0)
+    {
+        <div class="archived-section">
+            <button class="archived-toggle" @onclick="() => _showArchived = !_showArchived">
+                <MudIcon Icon="@(_showArchived ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                         Style="font-size: 18px;" />
+                <span>Archived (@_archivedBoards.Count)</span>
+            </button>
+            @if (_showArchived)
+            {
+                <div class="archived-grid">
+                    @foreach (var b in _archivedBoards)
+                    {
+                        <div class="archived-row">
+                            <span class="archived-dot" style="@($"background: {b.Color ?? "#888"};")"></span>
+                            <span class="archived-name">@b.Name</span>
+                            <span class="archived-meta">@b.TaskCount @(b.TaskCount == 1 ? "task" : "tasks")</span>
+                            <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Default"
+                                       OnClick="() => RestoreBoard(b.Id)"
+                                       StartIcon="@Icons.Material.Outlined.Unarchive">
+                                Restore
+                            </MudButton>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
 </div>
 
 <style>
@@ -218,6 +266,113 @@
 
     .dashboard-header {
         margin-bottom: 32px;
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+    }
+
+    .dashboard-header-text { flex: 1; min-width: 0; }
+
+    .export-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 980px;
+        background: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-divider);
+        color: var(--mud-palette-text-secondary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: border-color 0.2s, color 0.2s, transform 0.2s;
+        flex-shrink: 0;
+    }
+
+    .export-link:hover {
+        border-color: rgba(0, 122, 255, 0.35);
+        color: var(--mud-palette-text-primary);
+        transform: translateY(-1px);
+    }
+
+    .stat-delta {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 1px 8px;
+        border-radius: 980px;
+        font-size: 0.6875rem;
+        font-weight: 600;
+        font-feature-settings: "tnum";
+    }
+
+    .stat-delta.delta-up {
+        background: rgba(54, 179, 126, 0.12);
+        color: #36b37e;
+    }
+
+    .stat-delta.delta-down {
+        background: rgba(255, 159, 10, 0.12);
+        color: #FF9F0A;
+    }
+
+    .archived-section {
+        margin-top: 36px;
+    }
+
+    .archived-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: transparent;
+        border: none;
+        color: var(--mud-palette-text-secondary);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 6px 8px;
+        border-radius: 8px;
+        transition: background 0.15s;
+    }
+
+    .archived-toggle:hover { background: var(--mud-palette-background-gray); }
+
+    .archived-grid {
+        margin-top: 12px;
+        background: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-divider);
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    .archived-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--mud-palette-divider);
+        font-size: 0.875rem;
+    }
+
+    .archived-row:last-child { border-bottom: none; }
+
+    .archived-dot {
+        width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+    }
+
+    .archived-name {
+        font-weight: 500;
+        color: var(--mud-palette-text-primary);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .archived-meta {
+        font-size: 0.75rem;
+        color: var(--mud-palette-text-secondary);
     }
 
     .timer-hero {
@@ -592,6 +747,8 @@
 @code {
     private bool _loading = true;
     private List<BoardSummaryResponse>? _boards;
+    private List<BoardSummaryResponse>? _archivedBoards;
+    private bool _showArchived;
     private TimeSummaryResponse? _summary;
     private List<DailyTotalResponse>? _daily;
     private List<TopTaskResponse>? _topTasks;
@@ -629,11 +786,13 @@
         try
         {
             var boardsTask = BoardService.GetBoardsAsync();
+            var archivedTask = BoardService.GetArchivedBoardsAsync();
             var summaryTask = TimeEntryService.GetSummaryAsync();
             var dailyTask = TimeEntryService.GetDailyAsync(7);
             var topTasksTask = TimeEntryService.GetTopTasksAsync(7, 5);
-            await Task.WhenAll(boardsTask, summaryTask, dailyTask, topTasksTask);
+            await Task.WhenAll(boardsTask, archivedTask, summaryTask, dailyTask, topTasksTask);
             _boards = boardsTask.Result;
+            _archivedBoards = archivedTask.Result;
             _summary = summaryTask.Result;
             _daily = dailyTask.Result;
             _topTasks = topTasksTask.Result;
@@ -709,6 +868,27 @@
         finally
         {
             _quickStarting = false;
+        }
+    }
+
+    private async Task RestoreBoard(int boardId)
+    {
+        try
+        {
+            await BoardService.UnarchiveBoardAsync(boardId);
+            var moved = _archivedBoards?.FirstOrDefault(b => b.Id == boardId);
+            if (moved is not null)
+            {
+                _archivedBoards!.Remove(moved);
+                _boards ??= [];
+                _boards.Add(moved);
+                _boards = _boards.OrderBy(b => b.Name).ToList();
+            }
+            Snackbar.Add("Board restored.", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Could not restore board.", Severity.Error);
         }
     }
 
