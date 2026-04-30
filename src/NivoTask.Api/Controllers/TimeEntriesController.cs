@@ -120,8 +120,6 @@ public class TimeEntriesController : ControllerBase
         return Ok(ToTimeEntryResponse(entry, task.Title));
     }
 
-    // TODO: Stale-timer detection. If a timer runs for > 24h (orphaned due to
-    // browser close / app crash), it never contributes to rollup. WR-03.
     [HttpGet("timer/active")]
     public async Task<IActionResult> GetActiveTimer()
     {
@@ -134,6 +132,18 @@ public class TimeEntriesController : ControllerBase
             .FirstOrDefaultAsync(te => te.UserId == userId && te.EndTime == null && te.StartTime != null);
 
         if (entry is null) return NoContent();
+
+        // Lazy stale-timer close: if the active entry is older than the cap, close it
+        // here too (in case the hourly background sweep hasn't fired yet) so the user
+        // doesn't keep "running" a phantom timer.
+        var maxDuration = Services.StaleTimerCleanupService.MaxTimerDuration;
+        if (DateTime.UtcNow - entry.StartTime!.Value > maxDuration)
+        {
+            entry.EndTime = entry.StartTime!.Value.Add(maxDuration);
+            entry.DurationSeconds = (int)maxDuration.TotalSeconds;
+            await _db.SaveChangesAsync();
+            return NoContent();
+        }
 
         return Ok(new ActiveTimerResponse
         {
@@ -182,15 +192,32 @@ public class TimeEntriesController : ControllerBase
     }
 
     [HttpGet("time-entries/export")]
-    public async Task<IActionResult> ExportTimeEntries([FromQuery] int days = 30, [FromQuery] int? boardId = null)
+    public async Task<IActionResult> ExportTimeEntries(
+        [FromQuery] int days = 30,
+        [FromQuery] int? boardId = null,
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        if (days < 1) days = 1;
-        if (days > 3650) days = 3650;
 
-        var rangeStart = DateTime.Now.Date.AddDays(-(days - 1));
-        var rangeStartUtc = rangeStart.ToUniversalTime();
+        DateTime rangeStartUtc;
+        DateTime rangeEndUtc;
+        if (from is not null && to is not null)
+        {
+            var fromDate = from.Value.Date;
+            var toDate = to.Value.Date;
+            if (fromDate > toDate) (fromDate, toDate) = (toDate, fromDate);
+            rangeStartUtc = fromDate.ToUniversalTime();
+            rangeEndUtc = toDate.AddDays(1).ToUniversalTime();
+        }
+        else
+        {
+            if (days < 1) days = 1;
+            if (days > 3650) days = 3650;
+            rangeStartUtc = DateTime.Now.Date.AddDays(-(days - 1)).ToUniversalTime();
+            rangeEndUtc = DateTime.UtcNow.AddDays(1);
+        }
 
         var query = _db.TimeEntries
             .Where(te => te.UserId == userId
@@ -221,7 +248,7 @@ public class TimeEntriesController : ControllerBase
                 IsManual = r.StartTime == null,
                 Stamp = r.EndTime ?? r.StartTime ?? DateTime.UtcNow
             })
-            .Where(r => r.Stamp >= rangeStartUtc)
+            .Where(r => r.Stamp >= rangeStartUtc && r.Stamp < rangeEndUtc)
             .OrderByDescending(r => r.Stamp)
             .ToList();
 

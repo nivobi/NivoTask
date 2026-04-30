@@ -22,11 +22,28 @@
                 @_greeting@(string.IsNullOrEmpty(_userName) ? "" : $", {_userName}")
             </MudText>
         </div>
-        <a class="export-link" href="api/time-entries/export?days=30" target="_self"
-           title="Download last 30 days of time entries as CSV">
+        <button class="export-link" type="button" @onclick="OpenExportDialog"
+                title="Download time entries as CSV">
             <MudIcon Icon="@Icons.Material.Outlined.FileDownload" Style="font-size: 16px;" />
             Export CSV
-        </a>
+        </button>
+
+        <MudDialog @bind-Visible="_exportDialogOpen" Options="@(new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true })">
+            <TitleContent>
+                <MudText Typo="Typo.h6">Export time entries</MudText>
+            </TitleContent>
+            <DialogContent>
+                <MudDateRangePicker @bind-DateRange="_exportRange" Label="Date range"
+                                    PickerVariant="PickerVariant.Static"
+                                    MaxDate="DateTime.Today" />
+            </DialogContent>
+            <DialogActions>
+                <MudButton OnClick="@(() => _exportDialogOpen = false)">Cancel</MudButton>
+                <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="DoExport">
+                    Download
+                </MudButton>
+            </DialogActions>
+        </MudDialog>
     </div>
 
     @if (TimerState.IsRunning)
@@ -1075,6 +1092,28 @@
     private bool _editingWeeklyGoal;
     private int _dailyGoalDraft;
     private int _weeklyGoalDraft;
+
+    private bool _exportDialogOpen;
+    private DateRange _exportRange = new(DateTime.Today.AddDays(-29), DateTime.Today);
+
+    private void OpenExportDialog()
+    {
+        _exportRange = new DateRange(DateTime.Today.AddDays(-29), DateTime.Today);
+        _exportDialogOpen = true;
+    }
+
+    private void DoExport()
+    {
+        if (_exportRange?.Start is null || _exportRange.End is null)
+        {
+            Snackbar.Add("Pick a start and end date.", Severity.Warning);
+            return;
+        }
+        var from = _exportRange.Start.Value.ToString("yyyy-MM-dd");
+        var to = _exportRange.End.Value.ToString("yyyy-MM-dd");
+        _exportDialogOpen = false;
+        Navigation.NavigateTo($"api/time-entries/export?from={from}&to={to}", forceLoad: true);
+    }
 
     protected override async Task OnInitializedAsync()
     {

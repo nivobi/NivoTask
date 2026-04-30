@@ -96,6 +96,19 @@ builder.Services.AddHttpClient("github", c =>
 });
 builder.Services.AddSingleton<NivoTask.Api.Services.UpdateService>();
 
+// Background sweep that closes timers running >24h (browser crash / app close orphans).
+if (setupComplete)
+{
+    builder.Services.AddHostedService<NivoTask.Api.Services.StaleTimerCleanupService>();
+}
+
+// Health check (mapped at /healthz). Always registered; DB check only when set up.
+var healthChecks = builder.Services.AddHealthChecks();
+if (setupComplete)
+{
+    healthChecks.AddCheck<NivoTask.Api.Services.DbHealthCheck>("database");
+}
+
 var app = builder.Build();
 
 if (setupComplete)
@@ -133,6 +146,23 @@ if (setupComplete)
 }
 
 app.MapControllers();
+
+// /healthz — anonymous, returns JSON { status, version, checks }
+app.MapHealthChecks("/healthz", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (ctx, report) =>
+    {
+        ctx.Response.ContentType = "application/json";
+        var update = ctx.RequestServices.GetRequiredService<NivoTask.Api.Services.UpdateService>();
+        var payload = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            status = report.Status.ToString(),
+            version = update.GetCurrentVersion(),
+            checks = report.Entries.ToDictionary(e => e.Key, e => e.Value.Status.ToString())
+        });
+        await ctx.Response.WriteAsync(payload);
+    }
+}).AllowAnonymous();
 
 if (setupComplete)
 {

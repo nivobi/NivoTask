@@ -10,6 +10,9 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
+// Quiet HttpClient info logs in browser console (default ships every request/response)
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+
 // Cookie handler for auth
 builder.Services.AddScoped<CookieHandler>();
 

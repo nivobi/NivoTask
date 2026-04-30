@@ -10,7 +10,7 @@ Time logged on a sub-task instantly rolls up to the parent head task. Open the b
 - **Hierarchical time tracking** — head task → sub-tasks → time entries. Sub-task time aggregates to the parent, board total aggregates across tasks.
 - **One active timer at a time** — prevents accidental double-billing.
 - **Quick-start timer** on the dashboard — pick board, optional task, type notes, hit play.
-- **CSV export** — one click for invoicing.
+- **CSV export** — pick any date range for invoicing.
 - **Daily / weekly time goals** with progress bars and a 12-week activity heatmap.
 - **Cmd/Ctrl+K palette** — jump to any task across boards.
 - **Idle detection** — prompts to keep / trim / discard if you walk away with a timer running.
@@ -20,7 +20,8 @@ Time logged on a sub-task instantly rolls up to the parent head task. Open the b
 - **WIP limits** per column with a red warning when exceeded.
 - **Templates** — duplicate a task or whole board (columns, sub-tasks, labels included).
 - **Per-task time chart** + week-over-week delta on the dashboard.
-- **In-app updater** — Check for updates → Update now from the About dialog. App downloads the right binary for your OS, swaps files, restarts itself.
+- **In-app updater** — Check for updates → Update now from the About dialog. App downloads the right binary for your OS, swaps files, restarts itself. (Manual update required on IIS deployments.)
+- **Health endpoint** — `GET /healthz` returns JSON `{ status, version, checks.database }` for uptime monitors and load balancers.
 - **PWA** — installable as a desktop app on Windows / macOS.
 
 ## Tech stack
