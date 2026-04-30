@@ -28,6 +28,10 @@ public class HealthEndpointTests : IClassFixture<TestWebApplicationFactory>
         Assert.Equal("Healthy", status.GetString());
         Assert.True(root.TryGetProperty("version", out var version));
         Assert.False(string.IsNullOrWhiteSpace(version.GetString()));
+        Assert.True(root.TryGetProperty("hostname", out var hostname));
+        Assert.False(string.IsNullOrWhiteSpace(hostname.GetString()));
+        Assert.True(root.TryGetProperty("uptimeSeconds", out var uptime));
+        Assert.True(uptime.GetInt64() >= 0);
         Assert.True(root.TryGetProperty("checks", out var checks));
         Assert.True(checks.TryGetProperty("database", out var dbCheck));
         Assert.Equal("Healthy", dbCheck.GetString());

@@ -147,7 +147,10 @@ if (setupComplete)
 
 app.MapControllers();
 
-// /healthz — anonymous, returns JSON { status, version, checks }
+// Process start time for uptime reporting (used by /healthz).
+var processStart = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
+
+// /healthz — anonymous, returns JSON { status, version, hostname, uptimeSeconds, checks }
 app.MapHealthChecks("/healthz", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     ResponseWriter = async (ctx, report) =>
@@ -158,6 +161,8 @@ app.MapHealthChecks("/healthz", new Microsoft.AspNetCore.Diagnostics.HealthCheck
         {
             status = report.Status.ToString(),
             version = update.GetCurrentVersion(),
+            hostname = Environment.MachineName,
+            uptimeSeconds = (long)(DateTime.UtcNow - processStart).TotalSeconds,
             checks = report.Entries.ToDictionary(e => e.Key, e => e.Value.Status.ToString())
         });
         await ctx.Response.WriteAsync(payload);
