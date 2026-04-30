@@ -27,6 +27,9 @@ secrets.json
 ## Setup wizard config (contains DB credentials)
 setup.json
 
+## Data Protection keys (per-deploy, must not leak between envs)
+dp-keys/
+
 ## AI / planning artifacts (local-only)
 CLAUDE.md
 .planning/

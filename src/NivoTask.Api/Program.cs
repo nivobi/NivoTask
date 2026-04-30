@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,15 @@ if (setupComplete)
         builder.Services.AddDbContext<AppDbContext>(options =>
             options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
     }
+
+    // Persist Data Protection keys to disk so cookies survive app pool recycles.
+    // Without this, IIS OutOfProcess regenerates keys in-memory on every restart
+    // and existing auth cookies become undecryptable -> users get logged out.
+    var keysPath = Path.Combine(builder.Environment.ContentRootPath, "dp-keys");
+    Directory.CreateDirectory(keysPath);
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+        .SetApplicationName("NivoTask");
 
     // Identity with cookie auth
     builder.Services
