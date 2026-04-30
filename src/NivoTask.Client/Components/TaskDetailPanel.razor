@@ -8,6 +8,7 @@
 @inject TimerStateService TimerState
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
+@inject NavigationManager Navigation
 
 <div @key="TaskId" class="detail-panel-content" style="display: flex; flex-direction: column; height: 100%; background: var(--mud-palette-surface);">
     @* Panel header *@
@@ -17,6 +18,10 @@
                 Task Detail
             </MudText>
             <div class="d-flex align-center gap-1">
+                <MudTooltip Text="Duplicate task">
+                    <MudIconButton Icon="@Icons.Material.Outlined.ContentCopy" Size="Size.Small"
+                                   OnClick="HandleDuplicateTask" Style="opacity: 0.3;" />
+                </MudTooltip>
                 <MudTooltip Text="Delete task">
                     <MudIconButton Icon="@Icons.Material.Outlined.DeleteOutline" Size="Size.Small"
                                    OnClick="HandleDeleteTask" Style="opacity: 0.3;" />
@@ -80,6 +85,19 @@
                         @FormatTime(_task.TotalTimeSeconds) total
                     </MudText>
                 </div>
+                @if (_taskDaily is not null && _taskDaily.Count > 0 && _taskDaily.Any(d => d.Seconds > 0))
+                {
+                    var max = Math.Max(1, _taskDaily.Max(d => d.Seconds));
+                    <div class="task-daily-chart" title="Last 30 days">
+                        @foreach (var d in _taskDaily)
+                        {
+                            var heightPct = d.Seconds == 0 ? 4 : Math.Max(8, (int)(d.Seconds * 100.0 / max));
+                            var isToday = d.Date.Date == DateTime.Now.Date;
+                            <div class="chart-bar @(isToday ? "today" : "") @(d.Seconds == 0 ? "empty" : "")"
+                                 style="height: @(heightPct)%;" title="@d.Date.ToString("MMM d") · @FormatHm(d.Seconds)"></div>
+                        }
+                    </div>
+                }
             }
             else
             {
@@ -369,6 +387,44 @@
     }
 </div>
 
+<style>
+    .task-daily-chart {
+        display: flex;
+        align-items: flex-end;
+        gap: 2px;
+        height: 36px;
+        margin-bottom: 16px;
+        padding: 0 2px;
+    }
+
+    .task-daily-chart .chart-bar {
+        flex: 1;
+        min-height: 2px;
+        background: var(--mud-palette-divider);
+        border-radius: 1px;
+        transition: opacity 0.15s, transform 0.15s;
+    }
+
+    .task-daily-chart .chart-bar.today {
+        background: var(--mud-palette-primary);
+    }
+
+    .task-daily-chart .chart-bar.empty {
+        opacity: 0.4;
+    }
+
+    .task-daily-chart .chart-bar:hover {
+        opacity: 1;
+        transform: scaleY(1.05);
+        background: var(--mud-palette-secondary);
+    }
+
+    .board-column.wip-exceeded {
+        outline: 1px solid rgba(255, 69, 58, 0.55);
+        outline-offset: -1px;
+    }
+</style>
+
 @code {
     [Parameter] public int TaskId { get; set; }
     [Parameter] public int BoardId { get; set; }
@@ -413,6 +469,7 @@
     // Activity
     private bool _showActivity;
     private List<ActivityEntryResponse>? _activityEntries;
+    private List<DailyTotalResponse>? _taskDaily;
 
     private static readonly string[] _labelColors =
     [
@@ -450,6 +507,11 @@
             _showActivity = false;
             _showLabelPicker = false;
             _boardLabels = null;
+            _taskDaily = null;
+            if (_task is not null)
+            {
+                try { _taskDaily = await TaskService.GetTaskDailyAsync(TaskId, 30); } catch { _taskDaily = []; }
+            }
         }
         catch
         {
@@ -545,6 +607,25 @@
             if (removed is not null) _task!.SubTasks.Add(removed);
             Snackbar.Add("Could not delete sub-task.", Severity.Error);
             StateHasChanged();
+        }
+    }
+
+    private async Task HandleDuplicateTask()
+    {
+        if (_task is null) return;
+        try
+        {
+            var dup = await TaskService.DuplicateTaskAsync(_task.Id);
+            if (dup is not null)
+            {
+                Snackbar.Add("Task duplicated.", Severity.Success);
+                await OnClose.InvokeAsync();
+                Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Could not duplicate task.", Severity.Error);
         }
     }
 
@@ -756,6 +837,17 @@
 
     private static string RenderMarkdown(string markdown)
         => Markdown.ToHtml(markdown, _mdPipeline);
+
+    private static string FormatHm(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        var h = (int)ts.TotalHours;
+        var m = ts.Minutes;
+        if (h == 0 && m == 0) return $"{seconds}s";
+        if (h == 0) return $"{m}m";
+        if (m == 0) return $"{h}h";
+        return $"{h}h {m}m";
+    }
 
     private string FormatTime(int seconds)
     {

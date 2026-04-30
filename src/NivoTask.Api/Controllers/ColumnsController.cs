@@ -112,6 +112,7 @@ public class ColumnsController : ControllerBase
 
         column.Name = request.Name;
         column.IsDone = request.IsDone;
+        column.WipLimit = request.WipLimit;
 
         await _db.SaveChangesAsync();
         return NoContent();
@@ -199,6 +200,7 @@ public class ColumnsController : ControllerBase
         Name = c.Name,
         SortOrder = c.SortOrder,
         IsDone = c.IsDone,
+        WipLimit = c.WipLimit,
         BoardId = c.BoardId
     };
 }

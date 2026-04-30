@@ -59,6 +59,22 @@ public class TaskService
     public async Task<List<ActivityEntryResponse>> GetActivityAsync(int taskId)
         => await _http.GetFromJsonAsync<List<ActivityEntryResponse>>($"api/tasks/{taskId}/activity") ?? [];
 
+    public async Task<TaskResponse?> DuplicateTaskAsync(int taskId)
+    {
+        var response = await _http.PostAsync($"api/tasks/{taskId}/duplicate", null);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<TaskResponse>();
+    }
+
+    public async Task MoveBatchAsync(MoveBatchRequest request)
+    {
+        var response = await _http.PatchAsJsonAsync("api/tasks/move-batch", request);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<List<NivoTask.Shared.Dtos.TimeEntries.DailyTotalResponse>> GetTaskDailyAsync(int taskId, int days = 30)
+        => await _http.GetFromJsonAsync<List<NivoTask.Shared.Dtos.TimeEntries.DailyTotalResponse>>($"api/tasks/{taskId}/daily?days={days}") ?? [];
+
     public async Task<List<TaskSearchResult>> SearchTasksAsync(string query, int limit = 20)
     {
         if (string.IsNullOrWhiteSpace(query)) return [];

@@ -68,9 +68,12 @@
 
         @foreach (var (col, index) in _columns.Select((c, i) => (c, i)))
         {
-            <MudPaper Class="pa-2 mb-2 d-flex align-center" Elevation="0" Outlined="true">
+            <MudPaper Class="pa-2 mb-2 d-flex align-center gap-2" Elevation="0" Outlined="true">
                 <MudTextField @bind-Value="col.Name" Variant="Variant.Text" Class="flex-grow-1"
                               Immediate="true" />
+                <MudNumericField T="int?" @bind-Value="col.WipLimit" Min="1" Max="100" Clearable="true"
+                                 Placeholder="WIP" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Style="max-width: 80px;" />
                 <MudIconButton Icon="@Icons.Material.Filled.ArrowUpward" Size="Size.Small"
                                Disabled="@(index == 0)"
                                OnClick="@(() => MoveColumn(index, -1))" />
@@ -96,7 +99,11 @@
         <MudDivider Class="my-4" />
 
         <MudText Typo="Typo.caption" Color="Color.Error" Class="mb-2">DANGER ZONE</MudText>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="DuplicateBoard"
+                       StartIcon="@Icons.Material.Outlined.ContentCopy" Disabled="_duplicating">
+                Duplicate
+            </MudButton>
             <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="ConfirmArchiveBoard"
                        StartIcon="@Icons.Material.Outlined.Archive">
                 Archive Board
@@ -364,7 +371,7 @@
             foreach (var col in _columns.Where(c => !c.IsNew && c.Id > 0))
             {
                 await ColumnService.UpdateColumnAsync(BoardId, col.Id,
-                    new UpdateColumnRequest { Name = col.Name.Trim(), IsDone = col.IsDone });
+                    new UpdateColumnRequest { Name = col.Name.Trim(), IsDone = col.IsDone, WipLimit = col.WipLimit });
             }
 
             // Reorder columns (BOARD-05)
@@ -385,6 +392,27 @@
         {
             _saving = false;
         }
+    }
+
+    private bool _duplicating;
+
+    private async Task DuplicateBoard()
+    {
+        if (_duplicating) return;
+        _duplicating = true;
+        try
+        {
+            var newBoard = await BoardService.DuplicateBoardAsync(BoardId);
+            Snackbar.Add("Board duplicated.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok("duplicated"));
+            if (newBoard is not null)
+                Navigation.NavigateTo($"/boards/{newBoard.Id}");
+        }
+        catch
+        {
+            Snackbar.Add("Could not duplicate board.", Severity.Error);
+        }
+        finally { _duplicating = false; }
     }
 
     private async Task ConfirmArchiveBoard()
@@ -442,6 +470,7 @@
         public int Id { get; set; }
         public string Name { get; set; } = string.Empty;
         public bool IsDone { get; set; }
+        public int? WipLimit { get; set; }
         public int TaskCount { get; set; }
         public bool IsNew { get; set; }
     }

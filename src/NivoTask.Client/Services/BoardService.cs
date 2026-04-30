@@ -30,6 +30,13 @@ public class BoardService
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<BoardResponse?> DuplicateBoardAsync(int boardId)
+    {
+        var response = await _http.PostAsync($"api/boards/{boardId}/duplicate", null);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BoardResponse>();
+    }
+
     public async Task<BoardResponse?> GetBoardAsync(int boardId)
         => await _http.GetFromJsonAsync<BoardResponse>($"api/boards/{boardId}");
 

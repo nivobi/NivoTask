@@ -195,6 +195,54 @@
         </div>
     </div>
 
+    @if (!_loading && _heatmap is not null && _heatmap.Any(d => d.Seconds > 0))
+    {
+        <div class="section-title">
+            <MudText Typo="Typo.h6" Style="font-weight: 600; letter-spacing: -0.02em;">Activity</MudText>
+        </div>
+        <div class="heatmap-card">
+            @{
+                var maxHm = Math.Max(1, _heatmap.Max(d => d.Seconds));
+                var weekCount = (_heatmap.Count + 6) / 7;
+            }
+            <div class="heatmap-grid" style="grid-template-columns: repeat(@weekCount, 1fr);">
+                @for (int w = 0; w < weekCount; w++)
+                {
+                    <div class="heatmap-col">
+                        @for (int dow = 0; dow < 7; dow++)
+                        {
+                            var idx = w * 7 + dow;
+                            if (idx < _heatmap.Count)
+                            {
+                                var d = _heatmap[idx];
+                                var bucket = d.Seconds == 0 ? 0
+                                    : d.Seconds < maxHm * 0.25 ? 1
+                                    : d.Seconds < maxHm * 0.5 ? 2
+                                    : d.Seconds < maxHm * 0.75 ? 3
+                                    : 4;
+                                <div class="heatmap-cell heatmap-bucket-@bucket"
+                                     title="@d.Date.ToString("ddd, MMM d") · @FormatHm(d.Seconds)"></div>
+                            }
+                            else
+                            {
+                                <div class="heatmap-cell heatmap-bucket-empty"></div>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+            <div class="heatmap-legend">
+                <span>Less</span>
+                <div class="heatmap-cell heatmap-bucket-0"></div>
+                <div class="heatmap-cell heatmap-bucket-1"></div>
+                <div class="heatmap-cell heatmap-bucket-2"></div>
+                <div class="heatmap-cell heatmap-bucket-3"></div>
+                <div class="heatmap-cell heatmap-bucket-4"></div>
+                <span>More</span>
+            </div>
+        </div>
+    }
+
     @if (!_loading && _topTasks is not null && _topTasks.Count > 0)
     {
         <div class="section-title">
@@ -699,6 +747,59 @@
         margin-bottom: 14px;
     }
 
+    .heatmap-card {
+        background: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-divider);
+        border-radius: 16px;
+        padding: 18px;
+        margin-bottom: 36px;
+    }
+
+    .heatmap-grid {
+        display: grid;
+        gap: 3px;
+    }
+
+    .heatmap-col {
+        display: grid;
+        grid-template-rows: repeat(7, 1fr);
+        gap: 3px;
+    }
+
+    .heatmap-cell {
+        aspect-ratio: 1;
+        min-width: 10px;
+        min-height: 10px;
+        border-radius: 2px;
+        background: var(--mud-palette-divider);
+        transition: transform 0.1s;
+    }
+
+    .heatmap-cell:hover { transform: scale(1.3); }
+
+    .heatmap-bucket-empty { background: transparent; }
+    .heatmap-bucket-0 { background: var(--mud-palette-divider); opacity: 0.5; }
+    .heatmap-bucket-1 { background: rgba(54, 179, 126, 0.25); }
+    .heatmap-bucket-2 { background: rgba(54, 179, 126, 0.5); }
+    .heatmap-bucket-3 { background: rgba(54, 179, 126, 0.75); }
+    .heatmap-bucket-4 { background: #36b37e; }
+
+    .heatmap-legend {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        margin-top: 14px;
+        font-size: 0.6875rem;
+        color: var(--mud-palette-text-secondary);
+    }
+
+    .heatmap-legend .heatmap-cell {
+        width: 11px;
+        height: 11px;
+        min-width: 11px;
+        min-height: 11px;
+    }
+
     .top-tasks {
         background: var(--mud-palette-surface);
         border: 1px solid var(--mud-palette-divider);
@@ -868,6 +969,7 @@
     private bool _showArchived;
     private TimeSummaryResponse? _summary;
     private List<DailyTotalResponse>? _daily;
+    private List<DailyTotalResponse>? _heatmap;
     private List<TopTaskResponse>? _topTasks;
     private string _greeting = "Hello";
     private string _userName = string.Empty;
@@ -913,12 +1015,14 @@
             var archivedTask = BoardService.GetArchivedBoardsAsync();
             var summaryTask = TimeEntryService.GetSummaryAsync();
             var dailyTask = TimeEntryService.GetDailyAsync(7);
+            var heatmapTask = TimeEntryService.GetDailyAsync(84);
             var topTasksTask = TimeEntryService.GetTopTasksAsync(7, 5);
-            await Task.WhenAll(boardsTask, archivedTask, summaryTask, dailyTask, topTasksTask);
+            await Task.WhenAll(boardsTask, archivedTask, summaryTask, dailyTask, heatmapTask, topTasksTask);
             _boards = boardsTask.Result;
             _archivedBoards = archivedTask.Result;
             _summary = summaryTask.Result;
             _daily = dailyTask.Result;
+            _heatmap = heatmapTask.Result;
             _topTasks = topTasksTask.Result;
 
             if (_boards.Count > 0)

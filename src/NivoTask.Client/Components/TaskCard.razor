@@ -4,7 +4,7 @@
 @inject TaskService TaskService
 @inject TimerStateService TimerState
 
-<div class="task-card @(HasActiveTimer ? "timer-active" : "") @(Item.JustCompleted ? "just-completed" : "") @(Item.IsDone ? "task-done" : "")" @onclick="HandleClick">
+<div class="task-card @(HasActiveTimer ? "timer-active" : "") @(Item.JustCompleted ? "just-completed" : "") @(Item.IsDone ? "task-done" : "") @(IsSelected ? "task-selected" : "")" @onclick="HandleClick">
     @if (!string.IsNullOrEmpty(Item.CoverColor))
     {
         <div class="task-card-cover" style="background: @Item.CoverColor;"></div>
@@ -111,7 +111,9 @@
 @code {
     [Parameter] public BoardTaskItem Item { get; set; } = null!;
     [Parameter] public EventCallback<int> OnTaskClicked { get; set; }
+    [Parameter] public EventCallback<int> OnTaskToggleSelect { get; set; }
     [Parameter] public bool IsCompact { get; set; }
+    [Parameter] public bool IsSelected { get; set; }
 
     private bool HasActiveTimer => TimerState.IsRunning
         && Item.SubTasks.Any(st => st.Id == TimerState.ActiveTaskId);
@@ -138,8 +140,13 @@
     private async void HandleTimerChanged()
         => await InvokeAsync(StateHasChanged);
 
-    private async Task HandleClick()
+    private async Task HandleClick(MouseEventArgs e)
     {
+        if (e.CtrlKey || e.MetaKey)
+        {
+            await OnTaskToggleSelect.InvokeAsync(Item.Id);
+            return;
+        }
         await OnTaskClicked.InvokeAsync(Item.Id);
     }
 

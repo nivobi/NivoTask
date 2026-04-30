@@ -292,6 +292,7 @@
             Id = c.Id,
             Name = c.Name,
             IsDone = c.IsDone,
+            WipLimit = c.WipLimit,
             TaskCount = tasks.Count(t => t.ColumnIdentifier == c.Id.ToString()),
             IsNew = false
         }).ToList();

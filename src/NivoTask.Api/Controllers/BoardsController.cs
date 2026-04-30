@@ -207,6 +207,103 @@ public class BoardsController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("{boardId}/duplicate")]
+    public async Task<ActionResult<BoardResponse>> DuplicateBoard(int boardId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var src = await _db.Boards
+            .Include(b => b.Columns).ThenInclude(c => c.Tasks).ThenInclude(t => t.SubTasks)
+            .Include(b => b.Columns).ThenInclude(c => c.Tasks).ThenInclude(t => t.TaskLabels)
+            .Include(b => b.Labels)
+            .Where(b => b.Id == boardId && b.UserId == userId)
+            .FirstOrDefaultAsync();
+
+        if (src is null) return NotFound();
+
+        var copy = new Board
+        {
+            Name = src.Name + " (Copy)",
+            Color = src.Color,
+            Icon = src.Icon,
+            BackgroundType = src.BackgroundType,
+            BackgroundValue = src.BackgroundValue,
+            UserId = userId!
+        };
+        _db.Boards.Add(copy);
+        await _db.SaveChangesAsync();
+
+        // Clone labels and remember mapping
+        var labelMap = new Dictionary<int, int>();
+        foreach (var lbl in src.Labels)
+        {
+            var l = new Label { Name = lbl.Name, Color = lbl.Color, BoardId = copy.Id };
+            _db.Labels.Add(l);
+            await _db.SaveChangesAsync();
+            labelMap[lbl.Id] = l.Id;
+        }
+
+        // Clone columns + head tasks + sub-tasks + label associations
+        foreach (var col in src.Columns.OrderBy(c => c.SortOrder))
+        {
+            var newCol = new BoardColumn
+            {
+                Name = col.Name,
+                SortOrder = col.SortOrder,
+                IsDone = col.IsDone,
+                WipLimit = col.WipLimit,
+                BoardId = copy.Id
+            };
+            _db.BoardColumns.Add(newCol);
+            await _db.SaveChangesAsync();
+
+            foreach (var t in col.Tasks.Where(x => x.ParentTaskId == null).OrderBy(x => x.SortOrder))
+            {
+                var newTask = new TaskItem
+                {
+                    Title = t.Title,
+                    Description = t.Description,
+                    Priority = t.Priority,
+                    DueDate = t.DueDate,
+                    CoverColor = t.CoverColor,
+                    SortOrder = t.SortOrder,
+                    ColumnId = newCol.Id,
+                    ParentTaskId = null
+                };
+                _db.Tasks.Add(newTask);
+                await _db.SaveChangesAsync();
+
+                foreach (var sub in t.SubTasks.OrderBy(s => s.SortOrder))
+                {
+                    _db.Tasks.Add(new TaskItem
+                    {
+                        Title = sub.Title,
+                        Description = sub.Description,
+                        Priority = sub.Priority,
+                        DueDate = sub.DueDate,
+                        CoverColor = sub.CoverColor,
+                        SortOrder = sub.SortOrder,
+                        ColumnId = newCol.Id,
+                        ParentTaskId = newTask.Id
+                    });
+                }
+
+                foreach (var tl in t.TaskLabels)
+                {
+                    if (labelMap.TryGetValue(tl.LabelId, out var newLabelId))
+                        _db.TaskLabels.Add(new TaskLabel { TaskId = newTask.Id, LabelId = newLabelId });
+                }
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        var result = await _db.Boards
+            .Include(b => b.Columns.OrderBy(c => c.SortOrder))
+            .FirstOrDefaultAsync(b => b.Id == copy.Id);
+        return Ok(ToBoardResponse(result!));
+    }
+
     [HttpPost("{boardId}/archive")]
     public async Task<IActionResult> ArchiveBoard(int boardId)
     {
@@ -276,6 +373,7 @@ public class BoardsController : ControllerBase
                 Name = c.Name,
                 SortOrder = c.SortOrder,
                 IsDone = c.IsDone,
+                WipLimit = c.WipLimit,
                 BoardId = c.BoardId
             })
             .ToList()

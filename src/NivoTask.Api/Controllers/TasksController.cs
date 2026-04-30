@@ -252,6 +252,145 @@ public class TasksController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("tasks/move-batch")]
+    public async Task<IActionResult> MoveTaskBatch(MoveBatchRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (request.TaskIds.Count == 0) return NoContent();
+
+        var tasks = await _db.Tasks
+            .Include(t => t.SubTasks)
+            .Include(t => t.Column).ThenInclude(c => c.Board)
+            .Where(t => request.TaskIds.Contains(t.Id) && t.ParentTaskId == null && t.Column.Board.UserId == userId)
+            .ToListAsync();
+
+        if (tasks.Count == 0) return NotFound();
+
+        var boardId = tasks[0].Column.BoardId;
+        if (tasks.Any(t => t.Column.BoardId != boardId))
+            return BadRequest("All tasks must belong to the same board");
+
+        var targetColumn = await _db.BoardColumns
+            .FirstOrDefaultAsync(c => c.Id == request.TargetColumnId && c.BoardId == boardId);
+        if (targetColumn is null) return BadRequest("Target column not found in this board");
+
+        var maxSort = await _db.Tasks
+            .Where(t => t.ColumnId == request.TargetColumnId && t.ParentTaskId == null)
+            .MaxAsync(t => (int?)t.SortOrder) ?? 0;
+
+        foreach (var task in tasks.OrderBy(t => t.SortOrder))
+        {
+            var fromName = task.Column.Name;
+            maxSort += SortGap;
+            task.ColumnId = request.TargetColumnId;
+            task.SortOrder = maxSort;
+            foreach (var sub in task.SubTasks) sub.ColumnId = request.TargetColumnId;
+            LogActivity(task.Id, ActivityAction.Moved, $"Moved from \"{fromName}\" to \"{targetColumn.Name}\"");
+        }
+
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPost("tasks/{taskId}/duplicate")]
+    public async Task<ActionResult<TaskResponse>> DuplicateTask(int taskId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var src = await _db.Tasks
+            .Include(t => t.SubTasks)
+            .Include(t => t.TaskLabels)
+            .Include(t => t.Column).ThenInclude(c => c.Board)
+            .FirstOrDefaultAsync(t => t.Id == taskId && t.ParentTaskId == null && t.Column.Board.UserId == userId);
+
+        if (src is null) return NotFound();
+
+        var maxSort = await _db.Tasks
+            .Where(t => t.ColumnId == src.ColumnId && t.ParentTaskId == null)
+            .MaxAsync(t => (int?)t.SortOrder) ?? 0;
+
+        var copy = new TaskItem
+        {
+            Title = src.Title + " (Copy)",
+            Description = src.Description,
+            Priority = src.Priority,
+            DueDate = src.DueDate,
+            CoverColor = src.CoverColor,
+            ColumnId = src.ColumnId,
+            ParentTaskId = null,
+            SortOrder = maxSort + SortGap
+        };
+        _db.Tasks.Add(copy);
+        await _db.SaveChangesAsync();
+
+        // Clone sub-tasks
+        foreach (var sub in src.SubTasks.OrderBy(s => s.SortOrder))
+        {
+            _db.Tasks.Add(new TaskItem
+            {
+                Title = sub.Title,
+                Description = sub.Description,
+                Priority = sub.Priority,
+                DueDate = sub.DueDate,
+                CoverColor = sub.CoverColor,
+                ColumnId = copy.ColumnId,
+                ParentTaskId = copy.Id,
+                SortOrder = sub.SortOrder
+            });
+        }
+
+        // Clone label associations
+        foreach (var tl in src.TaskLabels)
+        {
+            _db.TaskLabels.Add(new TaskLabel { TaskId = copy.Id, LabelId = tl.LabelId });
+        }
+
+        await _db.SaveChangesAsync();
+        LogActivity(copy.Id, ActivityAction.Created, $"Duplicated from \"{src.Title}\"");
+        await _db.SaveChangesAsync();
+
+        return Ok(ToTaskResponse(copy));
+    }
+
+    [HttpGet("tasks/{taskId}/daily")]
+    public async Task<ActionResult<List<NivoTask.Shared.Dtos.TimeEntries.DailyTotalResponse>>> GetTaskDaily(int taskId, [FromQuery] int days = 30)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (days < 1) days = 1;
+        if (days > 365) days = 365;
+
+        var owns = await _db.Tasks
+            .AnyAsync(t => t.Id == taskId && t.Column.Board.UserId == userId);
+        if (!owns) return NotFound();
+
+        var rangeStart = DateTime.Now.Date.AddDays(-(days - 1));
+
+        var rows = await _db.TimeEntries
+            .Where(te => (te.TaskId == taskId || te.Task!.ParentTaskId == taskId)
+                      && (te.EndTime != null || te.StartTime == null)
+                      && te.DurationSeconds > 0)
+            .Select(te => new { te.DurationSeconds, te.EndTime, te.StartTime })
+            .ToListAsync();
+
+        var byDay = rows
+            .Select(r => new { r.DurationSeconds, Stamp = (r.EndTime ?? r.StartTime ?? DateTime.UtcNow).ToLocalTime().Date })
+            .Where(x => x.Stamp >= rangeStart)
+            .GroupBy(x => x.Stamp)
+            .ToDictionary(g => g.Key, g => g.Sum(x => x.DurationSeconds));
+
+        var result = new List<NivoTask.Shared.Dtos.TimeEntries.DailyTotalResponse>(days);
+        for (int i = 0; i < days; i++)
+        {
+            var d = rangeStart.AddDays(i);
+            result.Add(new NivoTask.Shared.Dtos.TimeEntries.DailyTotalResponse
+            {
+                Date = d,
+                Seconds = byDay.TryGetValue(d, out var s) ? s : 0
+            });
+        }
+        return Ok(result);
+    }
+
     [HttpPatch("boards/{boardId}/columns/{columnId}/tasks/reorder")]
     public async Task<IActionResult> ReorderTasks(int boardId, int columnId, ReorderTasksRequest request)
     {

@@ -9,4 +9,7 @@ public class UpdateColumnRequest
     public string Name { get; set; } = string.Empty;
 
     public bool IsDone { get; set; }
+
+    [Range(1, 100)]
+    public int? WipLimit { get; set; }
 }

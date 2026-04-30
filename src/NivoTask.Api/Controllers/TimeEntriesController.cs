@@ -258,7 +258,7 @@ public class TimeEntriesController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         if (days < 1) days = 1;
-        if (days > 90) days = 90;
+        if (days > 365) days = 365;
 
         var todayStart = DateTime.Now.Date;
         var rangeStart = todayStart.AddDays(-(days - 1));

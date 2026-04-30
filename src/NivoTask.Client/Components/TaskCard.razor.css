@@ -128,6 +128,12 @@
     opacity: 0.45;
 }
 
+.task-card.task-selected {
+    outline: 2px solid var(--mud-palette-secondary);
+    outline-offset: -2px;
+    background: color-mix(in srgb, var(--mud-palette-secondary) 6%, var(--mud-palette-surface));
+}
+
 /* Subtask checklist */
 .task-card-checklist {
     display: flex;
