@@ -10,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthState
 @inject ISnackbar Snackbar
+@inject LocalStorageService LocalStorage
 
 <div class="dashboard-root">
     <div class="dashboard-header">
@@ -83,7 +84,25 @@
 
     <div class="stats-row">
         <div class="stat-card">
-            <div class="stat-label">Today</div>
+            <div class="stat-label-row">
+                <span class="stat-label">Today</span>
+                @if (!_loading)
+                {
+                    @if (_editingDailyGoal)
+                    {
+                        <input type="number" min="0" max="1440" @bind-value="_dailyGoalDraft"
+                               class="stat-goal-input" @onkeydown="HandleDailyGoalKeyDown" autofocus />
+                        <button class="stat-goal-btn" @onclick="SaveDailyGoal">✓</button>
+                    }
+                    else
+                    {
+                        <button class="stat-goal-edit" @onclick="StartEditDailyGoal"
+                                title="Set daily goal (minutes)">
+                            @(_dailyGoalMinutes > 0 ? $"goal {FormatHm(_dailyGoalMinutes * 60)}" : "set goal")
+                        </button>
+                    }
+                }
+            </div>
             <div class="stat-value">
                 @if (_loading) { <span class="stat-skel"></span> }
                 else { @FormatHm(_summary?.TodaySeconds ?? 0) }
@@ -91,9 +110,36 @@
             <div class="stat-sub">
                 @if (!_loading) { @($"{_summary?.TodayEntryCount ?? 0} entries") }
             </div>
+            @if (!_loading && _dailyGoalMinutes > 0)
+            {
+                var goalSec = _dailyGoalMinutes * 60;
+                var pct = Math.Min(100, (int)((_summary?.TodaySeconds ?? 0) * 100.0 / goalSec));
+                var hit = (_summary?.TodaySeconds ?? 0) >= goalSec;
+                <div class="goal-bar">
+                    <div class="goal-bar-fill @(hit ? "hit" : "")" style="width: @(pct)%;"></div>
+                </div>
+            }
         </div>
         <div class="stat-card">
-            <div class="stat-label">Last 7 days</div>
+            <div class="stat-label-row">
+                <span class="stat-label">Last 7 days</span>
+                @if (!_loading)
+                {
+                    @if (_editingWeeklyGoal)
+                    {
+                        <input type="number" min="0" max="10080" @bind-value="_weeklyGoalDraft"
+                               class="stat-goal-input" @onkeydown="HandleWeeklyGoalKeyDown" autofocus />
+                        <button class="stat-goal-btn" @onclick="SaveWeeklyGoal">✓</button>
+                    }
+                    else
+                    {
+                        <button class="stat-goal-edit" @onclick="StartEditWeeklyGoal"
+                                title="Set weekly goal (minutes)">
+                            @(_weeklyGoalMinutes > 0 ? $"goal {FormatHm(_weeklyGoalMinutes * 60)}" : "set goal")
+                        </button>
+                    }
+                }
+            </div>
             <div class="stat-value">
                 @if (_loading) { <span class="stat-skel"></span> }
                 else { @FormatHm(_summary?.WeekSeconds ?? 0) }
@@ -113,6 +159,15 @@
                     }
                 }
             </div>
+            @if (!_loading && _weeklyGoalMinutes > 0)
+            {
+                var goalSec = _weeklyGoalMinutes * 60;
+                var pct = Math.Min(100, (int)((_summary?.WeekSeconds ?? 0) * 100.0 / goalSec));
+                var hit = (_summary?.WeekSeconds ?? 0) >= goalSec;
+                <div class="goal-bar">
+                    <div class="goal-bar-fill @(hit ? "hit" : "")" style="width: @(pct)%;"></div>
+                </div>
+            }
             @if (!_loading && _daily is not null && _daily.Count > 0)
             {
                 <div class="sparkline" title="Last 7 days">
@@ -520,6 +575,68 @@
         color: var(--mud-palette-text-secondary);
     }
 
+    .stat-label-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: space-between;
+    }
+
+    .stat-goal-edit {
+        background: transparent;
+        border: none;
+        font-size: 0.6875rem;
+        color: var(--mud-palette-text-secondary);
+        opacity: 0.5;
+        cursor: pointer;
+        padding: 2px 6px;
+        border-radius: 6px;
+        font-weight: 500;
+        font-feature-settings: "tnum";
+    }
+
+    .stat-goal-edit:hover { opacity: 1; background: var(--mud-palette-background-gray); }
+
+    .stat-goal-input {
+        width: 56px;
+        padding: 2px 6px;
+        font-size: 0.75rem;
+        border-radius: 6px;
+        border: 1px solid var(--mud-palette-divider);
+        background: var(--mud-palette-surface);
+        color: var(--mud-palette-text-primary);
+        font-feature-settings: "tnum";
+    }
+
+    .stat-goal-btn {
+        background: var(--mud-palette-secondary);
+        border: none;
+        color: white;
+        width: 22px; height: 22px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.75rem;
+    }
+
+    .goal-bar {
+        height: 4px;
+        background: var(--mud-palette-divider);
+        border-radius: 4px;
+        margin-top: 10px;
+        overflow: hidden;
+    }
+
+    .goal-bar-fill {
+        height: 100%;
+        background: var(--mud-palette-secondary);
+        border-radius: 4px;
+        transition: width 0.4s ease;
+    }
+
+    .goal-bar-fill.hit {
+        background: #36b37e;
+    }
+
     .stat-value {
         font-size: 1.875rem;
         font-weight: 600;
@@ -762,6 +879,13 @@
     private bool _quickStarting;
     private List<BoardTaskItem>? _quickBoardTasks;
 
+    private int _dailyGoalMinutes;
+    private int _weeklyGoalMinutes;
+    private bool _editingDailyGoal;
+    private bool _editingWeeklyGoal;
+    private int _dailyGoalDraft;
+    private int _weeklyGoalDraft;
+
     protected override async Task OnInitializedAsync()
     {
         TimerState.OnTimerChanged += HandleTimerChanged;
@@ -799,6 +923,9 @@
 
             if (_boards.Count > 0)
                 _quickBoardId = _boards[0].Id;
+
+            _dailyGoalMinutes = await LocalStorage.GetIntAsync("goal.daily.minutes") ?? 0;
+            _weeklyGoalMinutes = await LocalStorage.GetIntAsync("goal.weekly.minutes") ?? 0;
         }
         catch
         {
@@ -869,6 +996,46 @@
         {
             _quickStarting = false;
         }
+    }
+
+    private void StartEditDailyGoal()
+    {
+        _dailyGoalDraft = _dailyGoalMinutes;
+        _editingDailyGoal = true;
+    }
+
+    private async Task SaveDailyGoal()
+    {
+        var v = Math.Max(0, Math.Min(1440, _dailyGoalDraft));
+        _dailyGoalMinutes = v;
+        _editingDailyGoal = false;
+        await LocalStorage.SetIntAsync("goal.daily.minutes", v);
+    }
+
+    private async Task HandleDailyGoalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveDailyGoal();
+        else if (e.Key == "Escape") _editingDailyGoal = false;
+    }
+
+    private void StartEditWeeklyGoal()
+    {
+        _weeklyGoalDraft = _weeklyGoalMinutes;
+        _editingWeeklyGoal = true;
+    }
+
+    private async Task SaveWeeklyGoal()
+    {
+        var v = Math.Max(0, Math.Min(10080, _weeklyGoalDraft));
+        _weeklyGoalMinutes = v;
+        _editingWeeklyGoal = false;
+        await LocalStorage.SetIntAsync("goal.weekly.minutes", v);
+    }
+
+    private async Task HandleWeeklyGoalKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SaveWeeklyGoal();
+        else if (e.Key == "Escape") _editingWeeklyGoal = false;
     }
 
     private async Task RestoreBoard(int boardId)

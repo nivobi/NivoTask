@@ -16,4 +16,13 @@ public class LocalStorageService
 
     public async Task RemoveAsync(string key)
         => await _js.InvokeVoidAsync("localStorage.removeItem", key);
+
+    public async Task<int?> GetIntAsync(string key)
+    {
+        var raw = await GetAsync(key);
+        return int.TryParse(raw, out var v) ? v : null;
+    }
+
+    public async Task SetIntAsync(string key, int value)
+        => await SetAsync(key, value.ToString());
 }

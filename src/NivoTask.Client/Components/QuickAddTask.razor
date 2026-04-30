@@ -35,6 +35,7 @@ else
 @code {
     [Parameter] public int BoardId { get; set; }
     [Parameter] public int ColumnId { get; set; }
+    [Parameter] public bool ForceOpen { get; set; }
     [Parameter] public EventCallback<TaskResponse> OnTaskCreated { get; set; }
 
     [Inject] private TaskService TaskService { get; set; } = null!;
@@ -43,6 +44,11 @@ else
     private string _title = string.Empty;
     private bool _creating;
     private bool _showInput;
+
+    protected override void OnParametersSet()
+    {
+        if (ForceOpen) _showInput = true;
+    }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {

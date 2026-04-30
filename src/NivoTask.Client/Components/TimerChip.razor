@@ -34,6 +34,7 @@
 @code {
     [Parameter] public EventCallback<int> OnNavigateToTask { get; set; }
     [Parameter] public EventCallback<int?> OnTimerStopped { get; set; }
+    [Parameter] public EventCallback<NivoTask.Shared.Dtos.TimeEntries.TimeEntryResponse?> OnTimerStoppedEntry { get; set; }
 
     private string DisplayLabel
     {
@@ -81,11 +82,13 @@
         TimerState.Clear();
         try
         {
+            NivoTask.Shared.Dtos.TimeEntries.TimeEntryResponse? stoppedEntry = null;
             if (taskId.HasValue)
-                await TimeEntryService.StopTimerAsync(taskId.Value);
+                stoppedEntry = await TimeEntryService.StopTimerAsync(taskId.Value);
             else if (boardId.HasValue)
-                await TimeEntryService.StopBoardTimerAsync(boardId.Value);
+                stoppedEntry = await TimeEntryService.StopBoardTimerAsync(boardId.Value);
             await OnTimerStopped.InvokeAsync(taskId);
+            await OnTimerStoppedEntry.InvokeAsync(stoppedEntry);
         }
         catch
         {

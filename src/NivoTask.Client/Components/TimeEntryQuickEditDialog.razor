@@ -1,0 +1,66 @@
+@using NivoTask.Shared.Dtos.TimeEntries
+@inject TimeEntryService TimeEntryService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <div style="padding: 4px 4px 8px; min-width: 280px;">
+            <MudText Typo="Typo.h6" Style="font-weight: 600; letter-spacing: -0.01em;">Adjust last entry</MudText>
+            <MudText Typo="Typo.body2" Style="margin-top: 4px; color: var(--mud-palette-text-secondary);">
+                Forgot to start? Adjust the duration to backfill.
+            </MudText>
+            <div class="d-flex align-center gap-2 mt-4">
+                <MudNumericField T="int" @bind-Value="_minutes" Min="1" Max="1440"
+                                 Label="Duration (min)" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                 Style="max-width: 140px;" />
+                <MudTextField T="string" @bind-Value="_notes" Placeholder="Notes (optional)"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Class="flex-grow-1" />
+            </div>
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save" Disabled="_saving">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int EntryId { get; set; }
+    [Parameter] public int InitialDurationSeconds { get; set; }
+    [Parameter] public string? InitialNotes { get; set; }
+
+    private int _minutes;
+    private string? _notes;
+    private bool _saving;
+
+    protected override void OnInitialized()
+    {
+        _minutes = Math.Max(1, InitialDurationSeconds / 60);
+        _notes = InitialNotes;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Save()
+    {
+        if (_minutes < 1 || _minutes > 1440 || EntryId <= 0) return;
+        _saving = true;
+        try
+        {
+            await TimeEntryService.UpdateTimeEntryAsync(EntryId, new UpdateTimeEntryRequest
+            {
+                DurationSeconds = _minutes * 60,
+                Notes = string.IsNullOrWhiteSpace(_notes) ? null : _notes
+            });
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch
+        {
+            Snackbar.Add("Could not save changes.", Severity.Error);
+            _saving = false;
+        }
+    }
+}

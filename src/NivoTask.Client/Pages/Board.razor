@@ -9,6 +9,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 @if (_loading)
 {
@@ -57,15 +58,15 @@ else
                       Clearable="true" />
 
         @* Priority filter chips *@
-        <MudChip T="string" Size="Size.Small" OnClick="() => ToggleFilter('H')"
-                 Color="@(_filterPriority == 3 ? Color.Error : Color.Surface)"
-                 Style="@(_filterPriority == 3 ? "" : "opacity: 0.5;")">High</MudChip>
-        <MudChip T="string" Size="Size.Small" OnClick="() => ToggleFilter('M')"
-                 Color="@(_filterPriority == 2 ? Color.Warning : Color.Surface)"
-                 Style="@(_filterPriority == 2 ? "" : "opacity: 0.5;")">Medium</MudChip>
-        <MudChip T="string" Size="Size.Small" OnClick="() => ToggleFilter('L')"
-                 Color="@(_filterPriority == 1 ? Color.Info : Color.Surface)"
-                 Style="@(_filterPriority == 1 ? "" : "opacity: 0.5;")">Low</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="() => TogglePriority(3)"
+                 Color="@(_filterPriorities.Contains(3) ? Color.Error : Color.Surface)"
+                 Style="@(_filterPriorities.Contains(3) ? "" : "opacity: 0.5;")">High</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="() => TogglePriority(2)"
+                 Color="@(_filterPriorities.Contains(2) ? Color.Warning : Color.Surface)"
+                 Style="@(_filterPriorities.Contains(2) ? "" : "opacity: 0.5;")">Medium</MudChip>
+        <MudChip T="string" Size="Size.Small" OnClick="() => TogglePriority(1)"
+                 Color="@(_filterPriorities.Contains(1) ? Color.Info : Color.Surface)"
+                 Style="@(_filterPriorities.Contains(1) ? "" : "opacity: 0.5;")">Low</MudChip>
 
         @* Due date filters *@
         <MudChip T="string" Size="Size.Small" OnClick="@(() => ToggleDueFilter("overdue"))"
@@ -74,6 +75,24 @@ else
         <MudChip T="string" Size="Size.Small" OnClick="@(() => ToggleDueFilter("today"))"
                  Color="@(_filterDue == "today" ? Color.Warning : Color.Surface)"
                  Style="@(_filterDue == "today" ? "" : "opacity: 0.5;")">Due Today</MudChip>
+
+        @* Label filter chips *@
+        @if (_boardLabels is not null && _boardLabels.Count > 0)
+        {
+            @foreach (var lbl in _boardLabels)
+            {
+                var active = _filterLabelIds.Contains(lbl.Id);
+                <MudChip T="string" Size="Size.Small" OnClick="() => ToggleLabelFilter(lbl.Id)"
+                         Style="@($"{(active ? $"background: {lbl.Color}; color: white;" : "opacity: 0.55;")} font-weight: 500;")">
+                    @lbl.Name
+                </MudChip>
+            }
+        }
+
+        @* Hide-done toggle *@
+        <MudChip T="string" Size="Size.Small" OnClick="ToggleHideDone"
+                 Color="@(_filterHideDone ? Color.Success : Color.Surface)"
+                 Style="@(_filterHideDone ? "" : "opacity: 0.5;")">Hide done</MudChip>
 
         <div style="flex: 1;"></div>
 
@@ -159,7 +178,8 @@ else
                         </div>
                     }
                     <div style="margin-top: 8px;">
-                        <QuickAddTask BoardId="BoardId" ColumnId="@column.Id" OnTaskCreated="HandleTaskCreated" />
+                        <QuickAddTask BoardId="BoardId" ColumnId="@column.Id" OnTaskCreated="HandleTaskCreated"
+                                      ForceOpen="@(_quickAddColumnId == column.Id)" />
                     </div>
                 </div>
             }
@@ -197,8 +217,12 @@ else
 
     // Filters
     private string _searchTerm = "";
-    private int? _filterPriority;
+    private HashSet<int> _filterPriorities = [];
     private string? _filterDue;
+    private HashSet<int> _filterLabelIds = [];
+    private bool _filterHideDone;
+    private List<NivoTask.Shared.Dtos.Labels.LabelResponse>? _boardLabels;
+    private int _quickAddColumnId;
     private bool _compactView;
 
     // Column editing
@@ -225,7 +249,23 @@ else
     protected override void OnInitialized()
     {
         if (Layout is not null)
+        {
             Layout.OnTaskMetadataChanged += HandleTaskMetadataChanged;
+            Layout.OnGlobalShortcut += HandleGlobalShortcut;
+        }
+    }
+
+    private async void HandleGlobalShortcut(string action)
+    {
+        if (action == "new-task" && _columns.Count > 0)
+        {
+            _quickAddColumnId = _columns[0].Id;
+            await InvokeAsync(StateHasChanged);
+        }
+        else if (action == "focus-filter")
+        {
+            try { await JS.InvokeVoidAsync("eval", "document.querySelector('.mud-input-slot input[placeholder=\"Search tasks...\"]')?.focus();"); } catch { }
+        }
     }
 
     private async void HandleTaskMetadataChanged(int taskId)
@@ -260,7 +300,10 @@ else
     public void Dispose()
     {
         if (Layout is not null)
+        {
             Layout.OnTaskMetadataChanged -= HandleTaskMetadataChanged;
+            Layout.OnGlobalShortcut -= HandleGlobalShortcut;
+        }
     }
 
     private async Task LoadBoardAsync()
@@ -279,6 +322,7 @@ else
 
             _columns = _board.Columns.OrderBy(c => c.SortOrder).ToList();
             _taskItems = await BoardService.GetBoardTasksAsync(BoardId);
+            try { _boardLabels = await LabelService.GetLabelsAsync(BoardId); } catch { _boardLabels = []; }
 
             // Set app bar context (board name + settings icon)
             Layout?.SetBoardContext(_board.Name, _board.Id);
@@ -376,6 +420,7 @@ else
 
     private void HandleTaskCreated(TaskResponse task)
     {
+        _quickAddColumnId = 0;
         // Add new task to the local list (optimistic)
         _taskItems.Add(new BoardTaskItem
         {
@@ -406,8 +451,8 @@ else
             && !item.Title.Contains(_searchTerm, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        // Priority filter
-        if (_filterPriority.HasValue && item.Priority != _filterPriority)
+        // Priority filter (multi-select)
+        if (_filterPriorities.Count > 0 && (!item.Priority.HasValue || !_filterPriorities.Contains(item.Priority.Value)))
             return false;
 
         // Due date filter
@@ -416,19 +461,38 @@ else
         if (_filterDue == "today" && item.DueDate?.Date != DateTime.UtcNow.Date)
             return false;
 
+        // Label filter (any-of)
+        if (_filterLabelIds.Count > 0 && !item.Labels.Any(l => _filterLabelIds.Contains(l.Id)))
+            return false;
+
+        // Hide done
+        if (_filterHideDone && item.IsDone)
+            return false;
+
         return true;
     }
 
-    private void ToggleFilter(char level)
+    private void TogglePriority(int priority)
     {
-        int priority = level switch { 'H' => 3, 'M' => 2, 'L' => 1, _ => 0 };
-        _filterPriority = _filterPriority == priority ? null : priority;
+        if (!_filterPriorities.Add(priority)) _filterPriorities.Remove(priority);
         _dropContainer?.Refresh();
     }
 
     private void ToggleDueFilter(string filter)
     {
         _filterDue = _filterDue == filter ? null : filter;
+        _dropContainer?.Refresh();
+    }
+
+    private void ToggleLabelFilter(int labelId)
+    {
+        if (!_filterLabelIds.Add(labelId)) _filterLabelIds.Remove(labelId);
+        _dropContainer?.Refresh();
+    }
+
+    private void ToggleHideDone()
+    {
+        _filterHideDone = !_filterHideDone;
         _dropContainer?.Refresh();
     }
 

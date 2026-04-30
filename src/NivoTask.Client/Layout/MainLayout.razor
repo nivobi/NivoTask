@@ -19,7 +19,8 @@
             @(_currentBoardName ?? "NivoTask")
         </MudText>
         <MudSpacer />
-        <TimerChip OnNavigateToTask="OpenDetailPanel" OnTimerStopped="HandleTimerStopped" />
+        <TimerChip OnNavigateToTask="OpenDetailPanel" OnTimerStopped="HandleTimerStopped"
+                   OnTimerStoppedEntry="HandleTimerStoppedEntry" />
         @if (_currentBoardId > 0)
         {
             <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Default" Size="Size.Small"
@@ -88,6 +89,9 @@
             <div class="shortcuts-grid">
                 <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
                 <div class="shortcut-row"><kbd>Esc</kbd><span>Close panel / dialog</span></div>
+                <div class="shortcut-row"><kbd>Ctrl</kbd><kbd>K</kbd><span>Search tasks across boards</span></div>
+                <div class="shortcut-row"><kbd>n</kbd><span>New task in first column</span></div>
+                <div class="shortcut-row"><kbd>f</kbd><span>Focus board search</span></div>
             </div>
         </div>
     </div>
@@ -136,6 +140,7 @@
     [Inject] private TimerStateService TimerState { get; set; } = null!;
     [Inject] private TimeEntryService TimeEntryService { get; set; } = null!;
     [Inject] private ThemeService _themeService { get; set; } = null!;
+    [Inject] private ISnackbar Snackbar { get; set; } = null!;
 
     private readonly MudTheme _theme = new()
     {
@@ -344,6 +349,9 @@
     // Event for board to subscribe to when task metadata changes in detail panel
     public event Action<int>? OnTaskMetadataChanged;
 
+    // Event for pages to subscribe to global keyboard shortcuts ("n", "f", etc.)
+    public event Action<string>? OnGlobalShortcut;
+
     private void HandleTaskUpdated(int taskId)
     {
         OnTaskMetadataChanged?.Invoke(taskId);
@@ -361,6 +369,52 @@
                 OnTaskMetadataChanged?.Invoke(detail.ParentTaskId.Value);
         }
         catch { }
+    }
+
+    private void HandleTimerStoppedEntry(NivoTask.Shared.Dtos.TimeEntries.TimeEntryResponse? entry)
+    {
+        if (entry is null || entry.DurationSeconds <= 0) return;
+        Snackbar.Add(
+            $"Stopped: {FormatHm(entry.DurationSeconds)}. Adjust?",
+            Severity.Normal,
+            cfg =>
+            {
+                cfg.Action = "Adjust";
+                cfg.ActionColor = Color.Secondary;
+                cfg.OnClick = async snackbar =>
+                {
+                    await OpenQuickEditDialog(entry);
+                };
+                cfg.VisibleStateDuration = 8000;
+            });
+    }
+
+    private async Task OpenQuickEditDialog(NivoTask.Shared.Dtos.TimeEntries.TimeEntryResponse entry)
+    {
+        var parameters = new DialogParameters<TimeEntryQuickEditDialog>
+        {
+            { x => x.EntryId, entry.Id },
+            { x => x.InitialDurationSeconds, entry.DurationSeconds },
+            { x => x.InitialNotes, entry.Notes }
+        };
+        var dialog = await DialogService.ShowAsync<TimeEntryQuickEditDialog>("",
+            parameters, new DialogOptions { MaxWidth = MaxWidth.ExtraSmall, FullWidth = true, NoHeader = true });
+        var result = await dialog.Result;
+        if (result is not null && !result.Canceled)
+        {
+            Snackbar.Add("Entry updated.", Severity.Success);
+        }
+    }
+
+    private static string FormatHm(int seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        var h = (int)ts.TotalHours;
+        var m = ts.Minutes;
+        if (h == 0 && m == 0) return $"{seconds}s";
+        if (h == 0) return $"{m}m";
+        if (m == 0) return $"{h}h";
+        return $"{h}h {m}m";
     }
 
     private void HandleTaskDeleted(int taskId)
@@ -385,6 +439,12 @@
             case "k" when ctrlOrMeta:
                 _searchOpen = true;
                 StateHasChanged();
+                break;
+            case "n":
+                if (!ctrlOrMeta && !shift) OnGlobalShortcut?.Invoke("new-task");
+                break;
+            case "f":
+                if (!ctrlOrMeta && !shift) OnGlobalShortcut?.Invoke("focus-filter");
                 break;
         }
         await Task.CompletedTask;
