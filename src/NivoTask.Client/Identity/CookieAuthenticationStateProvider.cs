@@ -43,12 +43,14 @@ public class CookieAuthenticationStateProvider : AuthenticationStateProvider, IA
         return new AuthenticationState(user);
     }
 
-    public async Task<FormResult> LoginAsync(string email, string password)
+    public async Task<FormResult> LoginAsync(string email, string password, bool rememberMe)
     {
         try
         {
-            var result = await _httpClient.PostAsJsonAsync(
-                "login?useCookies=true", new { email, password });
+            var url = rememberMe
+                ? "login?useCookies=true"
+                : "login?useCookies=true&useSessionCookies=true";
+            var result = await _httpClient.PostAsJsonAsync(url, new { email, password });
 
             if (result.IsSuccessStatusCode)
             {

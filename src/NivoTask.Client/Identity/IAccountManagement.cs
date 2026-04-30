@@ -4,6 +4,6 @@ namespace NivoTask.Client.Identity;
 
 public interface IAccountManagement
 {
-    Task<FormResult> LoginAsync(string email, string password);
+    Task<FormResult> LoginAsync(string email, string password, bool rememberMe);
     Task LogoutAsync();
 }

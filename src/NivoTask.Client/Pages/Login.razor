@@ -65,7 +65,7 @@
         _errorMessage = null;
         _loading = true;
 
-        var result = await AccountManagement.LoginAsync(_email, _password);
+        var result = await AccountManagement.LoginAsync(_email, _password, _rememberMe);
         if (result.Succeeded)
         {
             Navigation.NavigateTo("/boards"); // D-09: redirect to board list
