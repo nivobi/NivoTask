@@ -140,6 +140,7 @@
     [Parameter] public TaskResponse SubTask { get; set; } = null!;
     [Parameter] public EventCallback OnTimerAction { get; set; }
     [Parameter] public EventCallback<int> OnDeleted { get; set; }
+    [Parameter] public EventCallback OnSubTaskChanged { get; set; }
 
     private bool IsActiveTimer => TimerState.ActiveTaskId == SubTask.Id;
     private string TimerIcon => IsActiveTimer ? Icons.Material.Filled.Pause : Icons.Material.Filled.PlayArrow;
@@ -194,6 +195,7 @@
         try
         {
             await TaskService.ToggleDoneAsync(SubTask.Id);
+            await OnSubTaskChanged.InvokeAsync();
         }
         catch
         {
@@ -343,6 +345,7 @@
         try
         {
             await TaskService.UpdateTaskAsync(SubTask.Id, new UpdateTaskRequest { Title = _editTitle, Description = SubTask.Description });
+            await OnSubTaskChanged.InvokeAsync();
         }
         catch
         {

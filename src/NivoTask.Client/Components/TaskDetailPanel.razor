@@ -303,7 +303,8 @@
                         {
                             <SubTaskRow SubTask="subTask"
                                         OnTimerAction="HandleTimerAction"
-                                        OnDeleted="HandleSubTaskDeleted" />
+                                        OnDeleted="HandleSubTaskDeleted"
+                                        OnSubTaskChanged="HandleSubTaskChanged" />
                         }
                     </div>
                 }
@@ -496,11 +497,20 @@
         {
             var created = await TaskService.CreateSubTaskAsync(_task!.Id, new CreateTaskRequest { Title = _newSubTaskTitle });
             if (created is not null)
+            {
                 _task.SubTasks.Add(created);
+                await OnTaskUpdated.InvokeAsync(_task.Id);
+            }
             _newSubTaskTitle = "";
         }
         catch { Snackbar.Add("Could not create sub-task.", Severity.Error); }
         _creatingSubTask = false;
+    }
+
+    private async Task HandleSubTaskChanged()
+    {
+        if (_task is null) return;
+        await OnTaskUpdated.InvokeAsync(_task.Id);
     }
 
     private async Task HandleTimerAction()
