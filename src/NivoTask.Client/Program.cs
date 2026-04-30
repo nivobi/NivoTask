@@ -45,5 +45,6 @@ builder.Services.AddSingleton<TimerStateService>();
 builder.Services.AddScoped<TimeEntryService>();
 builder.Services.AddScoped<LabelService>();
 builder.Services.AddScoped<SetupService>();
+builder.Services.AddScoped<SystemService>();
 
 await builder.Build().RunAsync();

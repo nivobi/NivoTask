@@ -39,10 +39,12 @@ jobs:
         id: tag
         run: |
           if [ -n "${{ inputs.tag }}" ]; then
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ inputs.tag }}"
           else
-            echo "value=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF#refs/tags/}"
           fi
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
 
       - name: Publish self-contained
         run: |
@@ -50,6 +52,8 @@ jobs:
             --configuration Release \
             --runtime ${{ matrix.rid }} \
             --self-contained true \
+            -p:Version=${{ steps.tag.outputs.version }} \
+            -p:InformationalVersion=${{ steps.tag.outputs.version }} \
             -p:PublishReadyToRun=false \
             -p:PublishTrimmed=false \
             -o publish/${{ matrix.rid }}

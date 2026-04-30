@@ -1,0 +1,222 @@
+@using Markdig
+@using NivoTask.Shared.Dtos.System
+@inject SystemService SystemService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<MudDialog>
+    <DialogContent>
+        <div style="min-width: 360px; max-width: 520px;">
+            <MudText Typo="Typo.h5" Style="font-weight: 700; letter-spacing: -0.02em;">NivoTask</MudText>
+            @if (_version is not null)
+            {
+                <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary); margin-top: 2px;">
+                    Version <strong>@_version.Version</strong> · @_version.Runtime
+                </MudText>
+            }
+
+            <MudDivider Class="my-3" />
+
+            @if (_check is null && !_checking)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Outlined.CloudDownload"
+                           OnClick="DoCheck" Style="text-transform: none;">
+                    Check for updates
+                </MudButton>
+            }
+            else if (_checking)
+            {
+                <div class="d-flex align-center gap-2">
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                    <span style="font-size: 0.875rem; color: var(--mud-palette-text-secondary);">Checking GitHub...</span>
+                </div>
+            }
+            else if (_check is not null)
+            {
+                @if (!string.IsNullOrEmpty(_check.Error))
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">
+                        Could not reach GitHub: @_check.Error
+                    </MudAlert>
+                    <MudButton Variant="Variant.Text" OnClick="() => DoCheck(true)" Class="mt-2"
+                               StartIcon="@Icons.Material.Filled.Refresh" Style="text-transform: none;">
+                        Retry
+                    </MudButton>
+                }
+                else if (!_check.IsUpdateAvailable)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true">
+                        You're on the latest version (v@_check.CurrentVersion).
+                    </MudAlert>
+                    <MudButton Variant="Variant.Text" OnClick="() => DoCheck(true)" Class="mt-2"
+                               StartIcon="@Icons.Material.Filled.Refresh" Style="text-transform: none;">
+                        Check again
+                    </MudButton>
+                }
+                else
+                {
+                    <div class="d-flex align-center gap-2 mb-2">
+                        <MudIcon Icon="@Icons.Material.Filled.NewReleases" Color="Color.Secondary" />
+                        <MudText Typo="Typo.h6" Style="font-weight: 600;">
+                            v@_check.LatestVersion available
+                        </MudText>
+                        @if (_check.PublishedAt.HasValue)
+                        {
+                            <span style="font-size: 0.75rem; color: var(--mud-palette-text-secondary); opacity: 0.7;">
+                                · @_check.PublishedAt.Value.ToString("MMM d, yyyy")
+                            </span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(_check.ReleaseNotes))
+                    {
+                        <div style="max-height: 240px; overflow-y: auto; padding: 12px; background: var(--mud-palette-background-gray); border-radius: 8px; font-size: 0.8125rem;">
+                            @((MarkupString)RenderMarkdown(_check.ReleaseNotes))
+                        </div>
+                    }
+                    @if (string.IsNullOrEmpty(_check.AssetUrl))
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">
+                            No installer for this platform (@_version?.Runtime). Download from the release page.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <div style="font-size: 0.75rem; color: var(--mud-palette-text-secondary); margin-top: 8px;">
+                            @_check.AssetName · @FormatBytes(_check.AssetSizeBytes)
+                        </div>
+                    }
+                    <div class="d-flex gap-2 mt-3">
+                        @if (!string.IsNullOrEmpty(_check.AssetUrl) && !_updating)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary"
+                                       StartIcon="@Icons.Material.Filled.SystemUpdateAlt"
+                                       OnClick="DoUpdate" Style="text-transform: none;">
+                                Update now
+                            </MudButton>
+                        }
+                        @if (_updating)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Disabled="true"
+                                       Style="text-transform: none;">
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                                @(_restarting ? "Restarting..." : "Downloading...")
+                            </MudButton>
+                        }
+                        @if (!string.IsNullOrEmpty(_check.ReleaseUrl))
+                        {
+                            <MudButton Variant="Variant.Text" Href="@_check.ReleaseUrl" Target="_blank"
+                                       StartIcon="@Icons.Material.Outlined.OpenInNew" Style="text-transform: none;">
+                                Release page
+                            </MudButton>
+                        }
+                    </div>
+                    @if (_restarting)
+                    {
+                        <MudText Typo="Typo.body2" Style="margin-top: 12px; color: var(--mud-palette-text-secondary); font-size: 0.8125rem;">
+                            App is restarting. Page will reload automatically when v@_check.LatestVersion is online.
+                        </MudText>
+                    }
+                }
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private VersionInfoResponse? _version;
+    private UpdateCheckResponse? _check;
+    private bool _checking;
+    private bool _updating;
+    private bool _restarting;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _version = await SystemService.GetVersionAsync(); } catch { }
+    }
+
+    private async Task DoCheck() => await DoCheck(false);
+
+    private async Task DoCheck(bool refresh)
+    {
+        _checking = true;
+        StateHasChanged();
+        try { _check = await SystemService.CheckForUpdatesAsync(refresh); }
+        catch (Exception ex) { _check = new UpdateCheckResponse { Error = ex.Message }; }
+        _checking = false;
+        StateHasChanged();
+    }
+
+    private async Task DoUpdate()
+    {
+        _updating = true;
+        StateHasChanged();
+        try
+        {
+            var result = await SystemService.StartUpdateAsync();
+            if (result is null || result.Status != "started")
+            {
+                Snackbar.Add(result?.Message ?? "Could not start update.", Severity.Error);
+                _updating = false;
+                StateHasChanged();
+                return;
+            }
+            _restarting = true;
+            StateHasChanged();
+            _ = Task.Run(WaitForRestart);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not start update: {ex.Message}", Severity.Error);
+            _updating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task WaitForRestart()
+    {
+        var startedAt = DateTime.UtcNow;
+        while (DateTime.UtcNow - startedAt < TimeSpan.FromMinutes(2))
+        {
+            await Task.Delay(3000);
+            try
+            {
+                var v = await SystemService.GetVersionAsync();
+                if (v is not null && _check is not null && v.Version == _check.LatestVersion)
+                {
+                    await InvokeAsync(() =>
+                    {
+                        Snackbar.Add($"Updated to v{v.Version}", Severity.Success);
+                        Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+                    });
+                    return;
+                }
+            }
+            catch { }
+        }
+        await InvokeAsync(() =>
+        {
+            Snackbar.Add("Update timed out. Reload the page manually.", Severity.Warning);
+            _updating = false;
+            _restarting = false;
+            StateHasChanged();
+        });
+    }
+
+    private void Close() => MudDialog.Close();
+
+    private static readonly MarkdownPipeline _md = new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+    private static string RenderMarkdown(string md) => Markdown.ToHtml(md, _md);
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0) return "";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024} KB";
+        return $"{bytes / 1024.0 / 1024.0:F1} MB";
+    }
+}

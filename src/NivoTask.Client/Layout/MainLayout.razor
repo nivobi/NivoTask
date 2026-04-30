@@ -26,6 +26,11 @@
             <MudIconButton Icon="@Icons.Material.Filled.Settings" Color="Color.Default" Size="Size.Small"
                            OnClick="OnSettingsClicked" Style="opacity: 0.6;" />
         }
+        <MudIconButton Icon="@Icons.Material.Outlined.Info"
+                       Color="Color.Default" Size="Size.Small"
+                       OnClick="OpenAboutDialog"
+                       Class="@(_updateAvailable ? "has-update-dot" : "")"
+                       Style="opacity: 0.6;" />
         <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Outlined.LightMode : Icons.Material.Outlined.DarkMode)"
                        Color="Color.Default" Size="Size.Small"
                        OnClick="ToggleDarkMode"
@@ -123,6 +128,16 @@
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
     }
+    .has-update-dot { position: relative; }
+    .has-update-dot::after {
+        content: '';
+        position: absolute;
+        top: 6px; right: 6px;
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--mud-palette-secondary);
+        box-shadow: 0 0 0 2px var(--mud-palette-appbar-background);
+    }
     .drawer-border {
         border-right: 1px solid var(--mud-palette-divider);
     }
@@ -141,6 +156,7 @@
     [Inject] private TimeEntryService TimeEntryService { get; set; } = null!;
     [Inject] private ThemeService _themeService { get; set; } = null!;
     [Inject] private ISnackbar Snackbar { get; set; } = null!;
+    [Inject] private SystemService SystemService { get; set; } = null!;
 
     private readonly MudTheme _theme = new()
     {
@@ -215,6 +231,7 @@
     private DotNetObjectReference<MainLayout>? _idleRef;
     private DateTime _idleCooldownUntil = DateTime.MinValue;
     private bool _idlePromptOpen;
+    private bool _updateAvailable;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -233,6 +250,21 @@
             // Init idle detector (5 min threshold)
             _idleRef = DotNetObjectReference.Create(this);
             await JS.InvokeVoidAsync("NivoTaskIdle.init", _idleRef, 300);
+
+            // Background update check (cached server-side; non-blocking)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var check = await SystemService.CheckForUpdatesAsync();
+                    if (check?.IsUpdateAvailable == true)
+                    {
+                        _updateAvailable = true;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                catch { }
+            });
 
             if (!_timerLoaded)
             {
@@ -325,6 +357,21 @@
             // Board was updated, reload current page
             Navigation.NavigateTo($"/boards/{_currentBoardId}", forceLoad: true);
         }
+    }
+
+    private async Task OpenAboutDialog()
+    {
+        var dialog = await DialogService.ShowAsync<AppAboutDialog>("",
+            new DialogOptions { MaxWidth = MaxWidth.Small, NoHeader = true });
+        await dialog.Result;
+        // Re-poll once dialog closes so the dot reflects latest state
+        try
+        {
+            var check = await SystemService.CheckForUpdatesAsync();
+            _updateAvailable = check?.IsUpdateAvailable == true;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     private async Task HandleLogout()

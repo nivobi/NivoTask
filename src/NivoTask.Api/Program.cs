@@ -76,6 +76,16 @@ if (setupComplete)
 builder.Services.AddOpenApi();
 builder.Services.AddControllers();
 
+// Update service: GitHub release polling + self-replace flow
+builder.Services.AddHttpClient("github", c =>
+{
+    c.BaseAddress = new Uri("https://api.github.com/");
+    c.DefaultRequestHeaders.UserAgent.ParseAdd("NivoTask-Updater/1.0");
+    c.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+    c.Timeout = TimeSpan.FromMinutes(5);
+});
+builder.Services.AddSingleton<NivoTask.Api.Services.UpdateService>();
+
 var app = builder.Build();
 
 if (setupComplete)
