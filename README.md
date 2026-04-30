@@ -120,4 +120,4 @@ src/
 
 ## Status
 
-Single-user, self-hosted, billable-hours focused. Not built for teams, not multi-tenant, no SSO, no email notifications. That is by design.
+Single-user, self-hosted, billable-hours focused. Multi-user, SSO, and email notifications are out of scope for v1 — not blocked by the design, just not built yet. PRs welcome if you need them.
