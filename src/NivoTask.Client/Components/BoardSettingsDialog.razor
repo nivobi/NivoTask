@@ -98,8 +98,7 @@
 
         <MudDivider Class="my-4" />
 
-        <MudText Typo="Typo.caption" Color="Color.Error" Class="mb-2">DANGER ZONE</MudText>
-        <div class="d-flex gap-2 flex-wrap">
+        <div class="d-flex gap-2 flex-wrap mb-4">
             <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="DuplicateBoard"
                        StartIcon="@Icons.Material.Outlined.ContentCopy" Disabled="_duplicating">
                 Duplicate
@@ -108,10 +107,14 @@
                        StartIcon="@Icons.Material.Outlined.Archive">
                 Archive Board
             </MudButton>
-            <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteBoard">
-                Delete Permanently
-            </MudButton>
         </div>
+
+        <MudDivider Class="my-4" />
+
+        <MudText Typo="Typo.caption" Color="Color.Error" Class="mb-2">DANGER ZONE</MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="ConfirmDeleteBoard">
+            Delete Permanently
+        </MudButton>
     </DialogContent>
     <DialogActions>
         <MudButton OnClick="Cancel">Cancel</MudButton>

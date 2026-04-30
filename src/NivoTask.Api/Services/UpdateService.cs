@@ -217,24 +217,29 @@ public class UpdateService
             File.Delete(archivePath);
 
             stage = "script";
-            // For IIS flow, copy the offline page template into workDir so the bat can drop it.
+            // Where the updater script lives and runs from. Some hosts (notably shared IIS)
+            // enforce SRP/AppLocker rules that block .bat execution from %TEMP%; the install
+            // dir is always allowed because the host already runs NivoTask.Api.exe from there.
+            var scriptDir = isIis ? installDir : workDir;
+
             if (isIis)
             {
+                // Copy the offline page template into install dir so the bat can drop it
+                // without depending on %TEMP% being readable across process boundaries.
                 var template = Path.Combine(installDir, "wwwroot", "app_offline.template.htm");
-                var offlineCopy = Path.Combine(workDir, "app_offline.htm");
-                if (File.Exists(template))
+                var offlineCopy = Path.Combine(installDir, "app_offline.template.htm");
+                if (File.Exists(template) && !string.Equals(template, offlineCopy, StringComparison.OrdinalIgnoreCase))
                 {
                     File.Copy(template, offlineCopy, overwrite: true);
                 }
-                else
+                else if (!File.Exists(offlineCopy))
                 {
-                    // Minimal fallback if the template is missing for any reason.
                     await File.WriteAllTextAsync(offlineCopy,
                         "<!doctype html><meta http-equiv=\"refresh\" content=\"5\"><title>Updating…</title><h1>NivoTask is updating</h1>",
                         ct);
                 }
             }
-            var updaterPath = WriteUpdaterScript(installDir, stagingDir, workDir, isIis);
+            var updaterPath = WriteUpdaterScript(installDir, stagingDir, scriptDir, isIis);
             _log.LogInformation("Spawning updater {Path}", updaterPath);
 
             stage = "spawn";
@@ -243,7 +248,7 @@ public class UpdateService
                 FileName = updaterPath,
                 UseShellExecute = true,
                 CreateNoWindow = true,
-                WorkingDirectory = workDir
+                WorkingDirectory = scriptDir
             };
             Process.Start(psi);
 
@@ -283,11 +288,11 @@ public class UpdateService
         }
     }
 
-    private static string WriteUpdaterScript(string installDir, string stagingDir, string workDir, bool useIisFlow)
+    private static string WriteUpdaterScript(string installDir, string stagingDir, string scriptDir, bool useIisFlow)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            var bat = Path.Combine(workDir, "nivotask-updater.bat");
+            var bat = Path.Combine(scriptDir, "nivotask-updater.bat");
             string content;
             if (useIisFlow)
             {
@@ -298,7 +303,7 @@ public class UpdateService
                     @echo off
                     setlocal enabledelayedexpansion
                     timeout /t 3 /nobreak >nul
-                    copy /Y "{workDir}\app_offline.htm" "{installDir}\app_offline.htm" >nul
+                    copy /Y "{installDir}\app_offline.template.htm" "{installDir}\app_offline.htm" >nul
                     timeout /t 4 /nobreak >nul
                     xcopy "{stagingDir}\*" "{installDir}\" /E /Y /I /Q
                     if !errorlevel! neq 0 (
@@ -330,7 +335,7 @@ public class UpdateService
         }
         else
         {
-            var sh = Path.Combine(workDir, "nivotask-updater.sh");
+            var sh = Path.Combine(scriptDir, "nivotask-updater.sh");
             var exeName = "NivoTask.Api";
             var content = $"""
                 #!/bin/sh
