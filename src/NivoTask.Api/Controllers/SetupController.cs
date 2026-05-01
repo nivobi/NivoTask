@@ -204,12 +204,20 @@ public class SetupController : ControllerBase
                 await dbForBoard.SaveChangesAsync();
             }
 
-            // 6. Mark setup complete
-            var finalJson = new
-            {
-                SetupComplete = true,
-                ConnectionStrings = new { DefaultConnection = connectionString }
-            };
+            // 6. Mark setup complete. Auto-enable IIS self-update if hosted by IIS so the
+            // user doesn't have to hand-edit setup.json afterwards.
+            var finalJson = IsRunningUnderIis()
+                ? (object)new
+                {
+                    SetupComplete = true,
+                    AllowIisSelfUpdate = true,
+                    ConnectionStrings = new { DefaultConnection = connectionString }
+                }
+                : new
+                {
+                    SetupComplete = true,
+                    ConnectionStrings = new { DefaultConnection = connectionString }
+                };
             await System.IO.File.WriteAllTextAsync(setupPath,
                 JsonSerializer.Serialize(finalJson, new JsonSerializerOptions { WriteIndented = true }));
 
@@ -290,12 +298,19 @@ public class SetupController : ControllerBase
                 return BadRequest(new { error = $"Migration failed: {ex.Message}" });
             }
 
-            // 4. Mark setup complete
-            var finalJson = new
-            {
-                SetupComplete = true,
-                ConnectionStrings = new { DefaultConnection = connectionString }
-            };
+            // 4. Mark setup complete. Auto-enable IIS self-update if hosted by IIS.
+            var finalJson = IsRunningUnderIis()
+                ? (object)new
+                {
+                    SetupComplete = true,
+                    AllowIisSelfUpdate = true,
+                    ConnectionStrings = new { DefaultConnection = connectionString }
+                }
+                : new
+                {
+                    SetupComplete = true,
+                    ConnectionStrings = new { DefaultConnection = connectionString }
+                };
             await System.IO.File.WriteAllTextAsync(setupPath,
                 JsonSerializer.Serialize(finalJson, new JsonSerializerOptions { WriteIndented = true }));
 
@@ -337,4 +352,11 @@ public class SetupController : ControllerBase
     private static string BuildConnectionString(string server, int port, string database,
         string username, string password) =>
         $"Server={server};Port={port};Database={database};User={username};Password={password};";
+
+    // True when the running process is hosted by IIS / AspNetCoreModule. Used to
+    // auto-enable AllowIisSelfUpdate in setup.json so users don't have to remember
+    // to add it after the wizard completes.
+    private static bool IsRunningUnderIis() =>
+        Environment.GetEnvironmentVariable("ASPNETCORE_IIS_PHYSICAL_PATH") is not null
+        || Environment.GetEnvironmentVariable("APP_POOL_ID") is not null;
 }
