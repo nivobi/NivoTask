@@ -21,6 +21,17 @@
             <MudText Typo="Typo.h3" Style="font-weight: 600; letter-spacing: -0.03em; margin-top: 4px;">
                 @_greeting@(string.IsNullOrEmpty(_userName) ? "" : $", {_userName}")
             </MudText>
+            @{
+                var streak = ComputeCurrentStreak();
+            }
+            @if (streak > 0)
+            {
+                <div class="streak-badge" title="Consecutive days with logged time">
+                    <span class="streak-flame">@(streak >= 7 ? "🔥" : "✨")</span>
+                    <span class="streak-num">@streak</span>
+                    <span class="streak-label">day@(streak == 1 ? "" : "s") streak</span>
+                </div>
+            }
         </div>
         <button class="export-link" type="button" @onclick="OpenExportDialog"
                 title="Download time entries as CSV">
@@ -427,6 +438,27 @@
     }
 
     .dashboard-header-text { flex: 1; min-width: 0; }
+
+    .streak-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 10px;
+        padding: 4px 12px;
+        border-radius: 980px;
+        background: linear-gradient(135deg, rgba(255, 138, 0, 0.12), rgba(255, 86, 86, 0.12));
+        border: 1px solid rgba(255, 138, 0, 0.3);
+        font-size: 0.8125rem;
+        font-weight: 500;
+        animation: streakIn 0.5s cubic-bezier(0.0, 0.0, 0.2, 1.0);
+    }
+    .streak-flame { font-size: 0.9375rem; line-height: 1; }
+    .streak-num { font-weight: 700; color: var(--mud-palette-text-primary); }
+    .streak-label { color: var(--mud-palette-text-secondary); }
+    @@keyframes streakIn {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
 
     .export-link {
         display: inline-flex;
@@ -1095,6 +1127,24 @@
 
     private bool _exportDialogOpen;
     private DateRange _exportRange = new(DateTime.Today.AddDays(-29), DateTime.Today);
+
+    private int ComputeCurrentStreak()
+    {
+        if (_heatmap is null || _heatmap.Count == 0) return 0;
+        var byDate = _heatmap.ToDictionary(d => d.Date.Date, d => d.Seconds);
+        var today = DateTime.Today;
+        // Streak counts from today (or yesterday if today isn't logged yet) backwards.
+        var cursor = byDate.TryGetValue(today, out var todaySec) && todaySec > 0
+            ? today
+            : today.AddDays(-1);
+        var streak = 0;
+        while (byDate.TryGetValue(cursor, out var sec) && sec > 0)
+        {
+            streak++;
+            cursor = cursor.AddDays(-1);
+        }
+        return streak;
+    }
 
     private void OpenExportDialog()
     {
