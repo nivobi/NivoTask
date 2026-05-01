@@ -36,32 +36,36 @@ public class SetupController : ControllerBase
         if (IsSetupComplete())
             return NotFound();
 
+        // Short connect timeout so the request returns fast even if the MySQL host
+        // is unreachable. Without this, IIS will return 502 before our catch fires.
         var connectionString = BuildConnectionString(request.Server, request.Port, request.Database,
-            request.Username, request.Password);
+            request.Username, request.Password) + "Connect Timeout=8;";
 
         var response = new TestConnectionResponse();
+
+        // Hard ceiling on total time so an unresponsive host can't trigger an IIS proxy timeout.
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
         try
         {
             await using var connection = new MySqlConnection(connectionString);
-            await connection.OpenAsync();
+            await connection.OpenAsync(cts.Token);
             response.Success = true;
 
-            // Best-effort detection: does AspNetUsers exist? If so, count rows + read first email.
-            // Errors here are swallowed — connection itself is the contract.
             try
             {
                 await using var tableCmd = connection.CreateCommand();
                 tableCmd.CommandText =
                     "SELECT COUNT(*) FROM information_schema.TABLES " +
                     "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'AspNetUsers'";
-                var tableExists = Convert.ToInt32(await tableCmd.ExecuteScalarAsync()) > 0;
+                var tableExists = Convert.ToInt32(await tableCmd.ExecuteScalarAsync(cts.Token)) > 0;
                 response.MigrationsApplied = tableExists;
 
                 if (tableExists)
                 {
                     await using var userCmd = connection.CreateCommand();
                     userCmd.CommandText = "SELECT Email FROM AspNetUsers ORDER BY Id LIMIT 1";
-                    var firstEmail = await userCmd.ExecuteScalarAsync() as string;
+                    var firstEmail = await userCmd.ExecuteScalarAsync(cts.Token) as string;
                     response.HasExistingUser = !string.IsNullOrEmpty(firstEmail);
                     response.ExistingUserEmail = firstEmail;
                 }
@@ -71,11 +75,26 @@ public class SetupController : ControllerBase
                 // Swallow — fall through with defaults (fresh-flow path).
             }
         }
+        catch (OperationCanceledException)
+        {
+            response.Success = false;
+            response.Error = $"Connection to {request.Server}:{request.Port} timed out after 10s. Check host/port and that your hosting provider allows outbound TCP to MySQL.";
+        }
         catch (Exception ex)
         {
             response.Success = false;
-            response.Error = ex.Message;
+            response.Error = $"{ex.GetType().Name}: {ex.Message}";
         }
+
+        // Mirror the result to a flat log file in install dir so the user can read it via FTP
+        // when IIS swallows the response (rare, but happens on hardened shared hosting).
+        try
+        {
+            var logPath = Path.Combine(_env.ContentRootPath, "setup-debug.log");
+            var line = $"{DateTime.UtcNow:O} test-connection success={response.Success} error={response.Error}\n";
+            await System.IO.File.AppendAllTextAsync(logPath, line);
+        }
+        catch { /* logging is best-effort */ }
 
         return Ok(response);
     }
@@ -94,15 +113,23 @@ public class SetupController : ControllerBase
             var connectionString = BuildConnectionString(request.Server, request.Port, request.Database,
                 request.DbUsername, request.DbPassword);
 
-            // 1. Validate connection
-            try
+            // 1. Validate connection (with short timeout so IIS doesn't 502 us first)
+            connectionString += "Connect Timeout=8;";
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
             {
-                await using var connection = new MySqlConnection(connectionString);
-                await connection.OpenAsync();
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { error = $"Database connection failed: {ex.Message}" });
+                try
+                {
+                    await using var connection = new MySqlConnection(connectionString);
+                    await connection.OpenAsync(cts.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    return BadRequest(new { error = $"Database connection to {request.Server}:{request.Port} timed out. Check the host/port and that outbound MySQL is allowed from your host." });
+                }
+                catch (Exception ex)
+                {
+                    return BadRequest(new { error = $"Database connection failed: {ex.GetType().Name}: {ex.Message}" });
+                }
             }
 
             // 2. Write setup.json with SetupComplete = false (crash safety)
