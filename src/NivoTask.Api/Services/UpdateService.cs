@@ -217,15 +217,9 @@ public class UpdateService
             File.Delete(archivePath);
 
             stage = "script";
-            // Where the updater script lives and runs from. Some hosts (notably shared IIS)
-            // enforce SRP/AppLocker rules that block .bat execution from %TEMP%; the install
-            // dir is always allowed because the host already runs NivoTask.Api.exe from there.
-            var scriptDir = isIis ? installDir : workDir;
-
             if (isIis)
             {
-                // Copy the offline page template into install dir so the bat can drop it
-                // without depending on %TEMP% being readable across process boundaries.
+                // Copy the offline page template into install dir so the inline cmd can drop it.
                 var template = Path.Combine(installDir, "wwwroot", "app_offline.template.htm");
                 var offlineCopy = Path.Combine(installDir, "app_offline.template.htm");
                 if (File.Exists(template) && !string.Equals(template, offlineCopy, StringComparison.OrdinalIgnoreCase))
@@ -239,16 +233,17 @@ public class UpdateService
                         ct);
                 }
             }
-            var updaterPath = WriteUpdaterScript(installDir, stagingDir, scriptDir, isIis);
-            _log.LogInformation("Spawning updater {Path}", updaterPath);
+            var spawnInfo = BuildUpdaterSpawn(installDir, stagingDir, workDir, isIis);
+            _log.LogInformation("Spawning updater: {File} {Args}", spawnInfo.FileName, spawnInfo.Arguments);
 
             stage = "spawn";
             var psi = new ProcessStartInfo
             {
-                FileName = updaterPath,
+                FileName = spawnInfo.FileName,
+                Arguments = spawnInfo.Arguments,
                 UseShellExecute = true,
                 CreateNoWindow = true,
-                WorkingDirectory = scriptDir
+                WorkingDirectory = installDir
             };
             Process.Start(psi);
 
@@ -288,54 +283,59 @@ public class UpdateService
         }
     }
 
-    private static string WriteUpdaterScript(string installDir, string stagingDir, string scriptDir, bool useIisFlow)
+    private record SpawnInfo(string FileName, string Arguments);
+
+    private static SpawnInfo BuildUpdaterSpawn(string installDir, string stagingDir, string workDir, bool useIisFlow)
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            var bat = Path.Combine(scriptDir, "nivotask-updater.bat");
-            string content;
+            // Use ping for sleep — `timeout` requires an interactive console and fails
+            // under non-interactive cmd. -n 4 yields ~3 seconds.
+            string command;
             if (useIisFlow)
             {
-                // IIS flow: drop app_offline.htm so ANCM stops worker (releases DLL locks),
-                // xcopy over install dir, remove app_offline.htm so ANCM respawns worker.
-                // On failure, leave app_offline.htm with an error message in place.
-                content = $"""
-                    @echo off
-                    setlocal enabledelayedexpansion
-                    timeout /t 3 /nobreak >nul
-                    copy /Y "{installDir}\app_offline.template.htm" "{installDir}\app_offline.htm" >nul
-                    timeout /t 4 /nobreak >nul
-                    xcopy "{stagingDir}\*" "{installDir}\" /E /Y /I /Q
-                    if !errorlevel! neq 0 (
-                        echo ^<!doctype html^>^<meta charset="utf-8"^>^<title^>Update failed^</title^>^<h1^>NivoTask update failed^</h1^>^<p^>xcopy returned !errorlevel!. Restore from backup, then delete app_offline.htm to recover.^</p^> > "{installDir}\app_offline.htm"
-                        exit /b 1
-                    )
-                    if not exist "{installDir}\NivoTask.Api.exe" (
-                        echo ^<!doctype html^>^<meta charset="utf-8"^>^<title^>Update failed^</title^>^<h1^>NivoTask update failed^</h1^>^<p^>NivoTask.Api.exe missing after xcopy.^</p^> > "{installDir}\app_offline.htm"
-                        exit /b 1
-                    )
-                    rmdir /s /q "{stagingDir}"
-                    del /f /q "{installDir}\app_offline.htm"
-                    del /f /q "%~f0"
-                    """;
+                // Group policy on shared IIS hosts (e.g. Simply.com) blocks .bat execution
+                // from any user-writable directory. cmd.exe + system tools (xcopy, copy, del)
+                // are whitelisted, so we run the whole sequence inline through cmd.exe with
+                // no script file written to disk.
+                //
+                // Sequence:
+                //   - sleep ~3s for HTTP response to flush
+                //   - drop app_offline.htm (ANCM detects, gracefully shuts worker, releases locks)
+                //   - sleep ~5s for shutdown
+                //   - xcopy staging → install
+                //   - cleanup staging, remove app_offline.htm (ANCM respawns worker)
+                //
+                // Chained with `&&` so a failure leaves app_offline.htm in place; user sees
+                // the "Updating…" template and knows to delete it manually if it lingers.
+                command = string.Join(" && ", new[]
+                {
+                    "ping 127.0.0.1 -n 4 >nul",
+                    $"copy /Y \"{installDir}\\app_offline.template.htm\" \"{installDir}\\app_offline.htm\" >nul",
+                    "ping 127.0.0.1 -n 6 >nul",
+                    $"xcopy \"{stagingDir}\\*\" \"{installDir}\\\" /E /Y /I /Q",
+                    $"rmdir /s /q \"{stagingDir}\"",
+                    $"del /f /q \"{installDir}\\app_offline.htm\""
+                });
             }
             else
             {
-                content = $"""
-                    @echo off
-                    timeout /t 3 /nobreak >nul
-                    xcopy "{stagingDir}\*" "{installDir}\" /E /Y /I /Q
-                    rmdir /s /q "{stagingDir}"
-                    start "NivoTask" "{installDir}\NivoTask.Api.exe"
-                    del "%~f0"
-                    """;
+                // Standalone (non-IIS) Windows: bring the new exe up ourselves after the swap.
+                command = string.Join(" && ", new[]
+                {
+                    "ping 127.0.0.1 -n 4 >nul",
+                    $"xcopy \"{stagingDir}\\*\" \"{installDir}\\\" /E /Y /I /Q",
+                    $"rmdir /s /q \"{stagingDir}\"",
+                    $"start \"NivoTask\" \"{installDir}\\NivoTask.Api.exe\""
+                });
             }
-            File.WriteAllText(bat, content);
-            return bat;
+            return new SpawnInfo("cmd.exe", "/c " + command);
         }
         else
         {
-            var sh = Path.Combine(scriptDir, "nivotask-updater.sh");
+            // Unix: still write a shell script (no equivalent group-policy issue) and
+            // invoke /bin/sh against it so the file's exec bit doesn't matter.
+            var sh = Path.Combine(workDir, "nivotask-updater.sh");
             var exeName = "NivoTask.Api";
             var content = $"""
                 #!/bin/sh
@@ -354,7 +354,7 @@ public class UpdateService
                                           UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
             }
             catch { }
-            return sh;
+            return new SpawnInfo("/bin/sh", $"\"{sh}\"");
         }
     }
 
